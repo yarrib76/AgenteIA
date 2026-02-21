@@ -1,0 +1,14 @@
+services:
+  agenteia:
+    build: .
+    container_name: agenteia
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./archivos:/app/archivos
+      - ./wa_auth:/app/.wwebjs_auth
+      - ./wa_cache:/app/.wwebjs_cache
+    restart: unless-stopped
