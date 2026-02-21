@@ -1,0 +1,137 @@
+<div class="card module-card">
+  <div class="card-header">
+    <h2 id="modelFormTitle">Alta de modelo</h2>
+  </div>
+
+  <form id="modelForm" class="form-grid">
+    <input type="hidden" id="modelId" name="modelId" />
+    <label class="field">
+      <span>Nombre</span>
+      <input type="text" id="modelName" name="name" required />
+    </label>
+    <label class="field">
+      <span>Proveedor</span>
+      <select id="modelProvider" name="provider" required>
+        <option value="openai">OpenAI</option>
+        <option value="deepseek">DeepSeek</option>
+        <option value="openai_compatible">OpenAI Compatible (Otro proveedor)</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Model ID (API)</span>
+      <input
+        type="text"
+        id="modelApiId"
+        name="modelApiId"
+        required
+        placeholder="Ej: deepseek-chat, gpt-4o-mini"
+      />
+    </label>
+    <label class="field">
+      <span>Base URL (solo OpenAI Compatible)</span>
+      <input
+        type="text"
+        id="modelBaseUrl"
+        name="baseUrl"
+        placeholder="Ej: https://api.tuprovider.com/v1"
+      />
+    </label>
+    <div class="modal-actions">
+      <button id="cancelModelEditBtn" class="secondary-button hidden" type="button">
+        Cancelar edicion
+      </button>
+      <button id="saveModelBtn" class="primary-button" type="submit">Guardar modelo</button>
+    </div>
+  </form>
+
+  <p id="modelMsg" class="note"></p>
+  <p class="note">
+    Al crear un modelo se genera en <code>.env</code> la variable
+    <code>NombreModelo_ApiKey=</code>.
+  </p>
+</div>
+
+<div class="card module-card mt-16">
+  <div class="card-header">
+    <h2>Modelos creados</h2>
+  </div>
+  <% if (!models || models.length === 0) { %>
+  <p class="note">No hay modelos registrados.</p>
+  <% } else { %>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Proveedor</th>
+        <th>Model ID</th>
+        <th>Variable .env</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% models.forEach(function(model) { %>
+      <tr>
+        <td><%= model.name %></td>
+        <td><%= model.provider || "openai" %></td>
+        <td><code><%= model.modelId || model.name %></code></td>
+        <td><code><%= model.envKey %></code></td>
+        <td>
+          <div class="inline-actions">
+            <button
+              type="button"
+              class="secondary-button edit-model-btn"
+              data-id="<%= model.id %>"
+              data-name="<%= model.name %>"
+              data-provider="<%= model.provider || 'openai' %>"
+              data-model-id="<%= model.modelId || model.name %>"
+              data-base-url="<%= model.baseUrl || '' %>"
+            >
+              Editar
+            </button>
+            <button
+              type="button"
+              class="secondary-button danger-button delete-model-btn"
+              data-id="<%= model.id %>"
+            >
+              Eliminar
+            </button>
+            <button
+              type="button"
+              class="secondary-button test-model-btn"
+              data-id="<%= model.id %>"
+              data-name="<%= model.name %>"
+            >
+              Test
+            </button>
+          </div>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+
+<div id="modelTestModal" class="modal-backdrop hidden">
+  <div class="modal-card">
+    <div class="card-header">
+      <h3 id="modelTestTitle">Test de modelo</h3>
+    </div>
+    <form id="modelTestForm" class="form-grid">
+      <input id="modelTestId" type="hidden" />
+      <label class="field">
+        <span>Mensaje de prueba</span>
+        <textarea id="modelTestInput" rows="5" required></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="closeModelTestBtn" class="secondary-button">Cerrar</button>
+        <button type="submit" id="runModelTestBtn" class="primary-button">Enviar</button>
+      </div>
+    </form>
+    <p id="modelTestMsg" class="note"></p>
+    <div class="card mt-16">
+      <strong>Respuesta</strong>
+      <pre id="modelTestOutput" class="test-output"></pre>
+    </div>
+  </div>
+</div>

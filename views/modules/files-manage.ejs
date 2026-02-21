@@ -1,0 +1,50 @@
+<div class="card module-card">
+  <div class="card-header">
+    <h2>Archivos cargados</h2>
+  </div>
+
+  <p class="note">
+    Eliminar desde esta pantalla borra el archivo fisico y su registro en JSON. Si un archivo esta
+    asociado a tareas, no se puede eliminar.
+  </p>
+  <p id="filesManageMsg" class="note"></p>
+
+  <% if (!files || files.length === 0) { %>
+  <p class="note">No hay archivos cargados.</p>
+  <% } else { %>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Ruta</th>
+        <th>Tamano</th>
+        <th>Fecha</th>
+        <th>Uso en tareas</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% files.forEach(function(file) { %>
+      <tr>
+        <td><%= file.originalName %></td>
+        <td class="wrap-cell"><%= file.relativePath %></td>
+        <td><%= file.sizeBytes %></td>
+        <td><%= file.createdAtFormatted || file.createdAt %></td>
+        <td><%= file.usageCount || 0 %></td>
+        <td>
+          <button
+            class="secondary-button danger-button delete-file-btn"
+            type="button"
+            data-id="<%= file.id %>"
+            data-name="<%= file.originalName %>"
+            <% if ((file.usageCount || 0) > 0) { %>disabled<% } %>
+          >
+            Eliminar
+          </button>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>

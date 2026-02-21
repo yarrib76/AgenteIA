@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= pageTitle %></title>
+    <link rel="stylesheet" href="/css/main.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">Agente IA</div>
+        <nav class="menu">
+          <a
+            class="menu-item <%= activeMenu === 'whatsapp-link' ? 'active' : '' %>"
+            href="/whatsapp"
+          >
+            Vincular Whatsapp
+          </a>
+          <a class="menu-item <%= activeMenu === 'agenda' ? 'active' : '' %>" href="/agenda">
+            Agenda
+          </a>
+          <a class="menu-item <%= activeMenu === 'chat' ? 'active' : '' %>" href="/chat">
+            Chat
+          </a>
+          <a class="menu-item <%= activeMenu === 'models' ? 'active' : '' %>" href="/modelos">
+            Modelos
+          </a>
+          <a
+            class="menu-item <%= activeMenu === 'files-manage' ? 'active' : '' %>"
+            href="/archivos/gestionar"
+          >
+            Gestionar Archivos
+          </a>
+          <div class="menu-group">
+            <div class="menu-group-title">Tareas</div>
+            <a
+              class="menu-subitem <%= activeMenu === 'tasks-new' ? 'active' : '' %>"
+              href="/tareas/nueva"
+            >
+              Nueva
+            </a>
+          </div>
+          <div class="menu-group">
+            <div class="menu-group-title">Agente</div>
+            <a
+              class="menu-subitem <%= activeMenu === 'agent-new' ? 'active' : '' %>"
+              href="/agente/nuevo"
+            >
+              Nuevo Agente
+            </a>
+            <a
+              class="menu-subitem <%= activeMenu === 'agent-roles' ? 'active' : '' %>"
+              href="/agente/roles"
+            >
+              Roles
+            </a>
+          </div>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <header class="content-header">
+          <h1><%= headerTitle %></h1>
+        </header>
+
+        <section>
+          <%- include("../modules/" + moduleView, moduleData) %>
+        </section>
+      </main>
+    </div>
+
+    <% if (pageScripts && pageScripts.length) { %> <% pageScripts.forEach(function(script) { %>
+    <script src="<%= script %>"></script>
+    <% }) %> <% } %>
+  </body>
+</html>

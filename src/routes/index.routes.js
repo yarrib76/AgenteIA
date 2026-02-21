@@ -1,0 +1,55 @@
+const express = require("express");
+const whatsappController = require("../controllers/whatsapp.controller");
+const agendaController = require("../controllers/agenda.controller");
+const chatController = require("../controllers/chat.controller");
+const agentController = require("../controllers/agent.controller");
+const modelController = require("../controllers/model.controller");
+const taskController = require("../controllers/task.controller");
+const fileController = require("../controllers/file.controller");
+
+const router = express.Router();
+
+router.get("/", whatsappController.renderDashboard);
+router.get("/whatsapp", whatsappController.renderDashboard);
+router.get("/agenda", agendaController.renderAgendaPage);
+router.get("/chat", chatController.renderChatPage);
+router.get("/agente/nuevo", agentController.renderNewAgentPage);
+router.get("/agente/roles", agentController.renderRolesPage);
+router.get("/modelos", modelController.renderModelsPage);
+router.get("/tareas/nueva", taskController.renderNewTaskPage);
+router.get("/archivos/gestionar", fileController.renderManageFilesPage);
+
+router.get("/api/whatsapp/status", whatsappController.getStatus);
+router.post("/api/whatsapp/qr/refresh", whatsappController.refreshQr);
+router.get("/api/contacts", agendaController.listContacts);
+router.post("/api/contacts", agendaController.createContact);
+router.get("/api/chat/:contactId/messages", chatController.getConversation);
+router.post("/api/chat/send", chatController.sendMessage);
+router.post("/api/chat/clear", chatController.clearConversation);
+router.get("/api/chat/:contactId/clear", chatController.clearConversation);
+router.post("/api/chat/:contactId/clear", chatController.clearConversation);
+router.delete("/api/chat/:contactId/clear", chatController.clearConversation);
+router.get("/api/roles", agentController.listRoles);
+router.post("/api/roles", agentController.createRole);
+router.put("/api/roles/:roleId", agentController.updateRole);
+router.delete("/api/roles/:roleId", agentController.deleteRole);
+router.post("/api/agents", agentController.createAgent);
+router.put("/api/agents/:agentId", agentController.updateAgent);
+router.delete("/api/agents/:agentId", agentController.deleteAgent);
+router.post("/api/models", modelController.createModel);
+router.put("/api/models/:modelId", modelController.updateModel);
+router.delete("/api/models/:modelId", modelController.deleteModel);
+router.post("/api/models/:modelId/test", modelController.testModel);
+router.post("/api/tasks", taskController.createTask);
+router.get("/api/tasks/:taskId/prompt", taskController.getTaskPrompt);
+router.get("/api/tasks/:taskId", taskController.getTaskDetails);
+router.put("/api/tasks/:taskId", taskController.updateTask);
+router.delete("/api/tasks/:taskId", taskController.deleteTask);
+router.post("/api/tasks/:taskId/queue", taskController.queueTask);
+router.post("/api/tasks/:taskId/execute", taskController.executeTask);
+router.post("/api/tasks/:taskId/logs/clear", taskController.clearTaskLogs);
+router.get("/api/files", fileController.listFiles);
+router.post("/api/files/upload", fileController.uploadFile);
+router.delete("/api/files/:fileId", fileController.deleteFile);
+
+module.exports = router;

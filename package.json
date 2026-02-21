@@ -1,0 +1,21 @@
+{
+  "name": "agenteia",
+  "version": "1.0.0",
+  "description": "Aplicacion web multi agente IA con modulo de vinculacion de WhatsApp",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1",
+    "whatsapp-web.js": "^1.26.0",
+    "xlsx": "^0.18.5"
+  }
+}

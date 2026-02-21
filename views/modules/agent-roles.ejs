@@ -1,0 +1,73 @@
+<div class="card module-card">
+  <div class="card-header">
+    <h2 id="rolePageFormTitle">Crear rol</h2>
+  </div>
+
+  <form id="roleCrudForm" class="form-grid">
+    <input type="hidden" id="roleCrudId" name="roleId" />
+    <label class="field">
+      <span>Nombre del rol</span>
+      <input id="roleCrudName" type="text" name="name" required />
+    </label>
+    <label class="field">
+      <span>Detalle de la funcion (prompt)</span>
+      <textarea id="roleCrudDetail" name="detail" rows="8" required></textarea>
+    </label>
+    <div class="modal-actions">
+      <button id="cancelRoleEditBtn" class="secondary-button hidden" type="button">
+        Cancelar edicion
+      </button>
+      <button id="saveRoleBtn" class="primary-button" type="submit">Guardar rol</button>
+    </div>
+  </form>
+  <p id="roleCrudMsg" class="note"></p>
+</div>
+
+<div class="card module-card mt-16">
+  <div class="card-header">
+    <h2>Roles existentes</h2>
+  </div>
+  <% if (!roles || roles.length === 0) { %>
+  <p class="note">No hay roles registrados.</p>
+  <% } else { %>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Detalle</th>
+        <th>Asignado a</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% roles.forEach(function(role) { %>
+      <tr>
+        <td><%= role.name %></td>
+        <td class="wrap-cell"><%= role.detail %></td>
+        <td><%= usageByRoleId[role.id] || 0 %> agentes</td>
+        <td>
+          <div class="inline-actions">
+            <button
+              class="secondary-button edit-role-btn"
+              type="button"
+              data-id="<%= role.id %>"
+              data-name="<%= role.name %>"
+            >
+              Editar
+            </button>
+            <textarea class="hidden role-detail-source"><%= role.detail %></textarea>
+            <button
+              class="secondary-button danger-button delete-role-btn"
+              type="button"
+              data-id="<%= role.id %>"
+            >
+              Eliminar
+            </button>
+          </div>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>

@@ -1,0 +1,14 @@
+node_modules/
+.wwebjs_auth/
+.wwebjs_cache/
+.wwebjs_authBak/
+npm-debug.log*
+.env
+.env.*
+
+# Mantener estructura de carpetas sin contenido runtime
+archivos/*
+!archivos/.gitkeep
+
+data/*
+!data/.gitkeep

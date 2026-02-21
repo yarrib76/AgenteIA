@@ -1,0 +1,48 @@
+<div class="card module-card">
+  <div class="card-header">
+    <h2>Registrar contacto</h2>
+  </div>
+
+  <form id="agendaForm" class="form-grid">
+    <label class="field">
+      <span>Nombre</span>
+      <input type="text" name="name" required maxlength="80" />
+    </label>
+    <label class="field">
+      <span>Numero WhatsApp</span>
+      <input type="text" name="phone" required maxlength="20" placeholder="54911..." />
+    </label>
+    <button class="primary-button" type="submit">Guardar contacto</button>
+  </form>
+
+  <p id="agendaMsg" class="note"></p>
+</div>
+
+<div class="card module-card mt-16">
+  <div class="card-header">
+    <h2>Contactos guardados</h2>
+  </div>
+  <div id="contactsList">
+    <% if (!contacts || contacts.length === 0) { %>
+    <p class="note">No hay contactos cargados.</p>
+    <% } else { %>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>WhatsApp</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% contacts.forEach(function(contact) { %>
+        <tr>
+          <td><%= contact.name %></td>
+          <td><%= contact.phone %></td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } %>
+  </div>
+</div>
+

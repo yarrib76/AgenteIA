@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= pageTitle %></title>
+    <link rel="stylesheet" href="/css/main.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">Agente IA</div>
+        <nav class="menu">
+          <a
+            class="menu-item <%= activeMenu === 'whatsapp-link' ? 'active' : '' %>"
+            href="/"
+          >
+            Vincular Whatsapp
+          </a>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <header class="content-header">
+          <h1>Vincular Whatsapp</h1>
+        </header>
+
+        <section>
+          <%- include("../modules/whatsapp-link", { status: status }) %>
+        </section>
+      </main>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/whatsapp-link.js"></script>
+  </body>
+</html>
+

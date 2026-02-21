@@ -1,0 +1,292 @@
+<div class="card module-card">
+  <div class="card-header">
+    <h2 id="taskFormTitle">Nueva tarea</h2>
+  </div>
+
+  <form id="taskForm" class="form-grid">
+    <input type="hidden" id="taskId" name="taskId" />
+    <label class="field">
+      <span>Agente</span>
+      <select id="taskAgentId" name="agentId" required>
+        <option value="">Seleccionar...</option>
+        <% agents.forEach(function(agent) { %>
+        <% const role = roles.find(function(r) { return r.id === agent.roleId; }); %>
+        <% const model = models.find(function(m) { return m.id === agent.modelId; }); %>
+        <option value="<%= agent.id %>">
+          <%= agent.name %> | Rol: <%= role ? role.name : "Sin rol" %> | Modelo: <%= model ? model.name : "Sin modelo" %>
+        </option>
+        <% }) %>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>Plantilla de tarea (instruccion fija)</span>
+      <textarea
+        id="taskPromptTemplate"
+        name="taskPromptTemplate"
+        rows="6"
+        required
+      ></textarea>
+    </label>
+
+    <label class="field">
+      <span>Input de la tarea (dato variable para esta ejecucion)</span>
+      <textarea id="taskInput" name="taskInput" rows="6" required></textarea>
+    </label>
+
+    <div id="taskScheduleCard" class="card module-card">
+      <div class="card-header">
+        <h3>Programacion</h3>
+        <button
+          id="taskScheduleToggleBtn"
+          class="secondary-button collapse-toggle-btn"
+          type="button"
+          aria-expanded="false"
+          title="Expandir/contraer programacion"
+        >
+          ▸
+        </button>
+      </div>
+      <div id="taskScheduleBody" class="hidden">
+        <label class="field">
+          <span>
+            <input id="taskScheduleEnabled" name="scheduleEnabled" type="checkbox" value="true" />
+            Ejecutar automaticamente
+          </span>
+        </label>
+        <div class="role-row">
+          <label class="field role-field">
+            <span>Dias</span>
+            <div class="inline-actions">
+              <label><input type="checkbox" name="scheduleDays" value="1" />Lun</label>
+              <label><input type="checkbox" name="scheduleDays" value="2" />Mar</label>
+              <label><input type="checkbox" name="scheduleDays" value="3" />Mie</label>
+              <label><input type="checkbox" name="scheduleDays" value="4" />Jue</label>
+              <label><input type="checkbox" name="scheduleDays" value="5" />Vie</label>
+              <label><input type="checkbox" name="scheduleDays" value="6" />Sab</label>
+              <label><input type="checkbox" name="scheduleDays" value="0" />Dom</label>
+            </div>
+          </label>
+          <label class="field role-field">
+            <span>Hora</span>
+            <input id="taskScheduleTime" name="scheduleTime" type="time" value="09:00" />
+          </label>
+          <label class="field role-field">
+            <span>Zona horaria</span>
+            <input
+              id="taskScheduleTimezone"
+              name="scheduleTimezone"
+              type="text"
+              value="America/Argentina/Buenos_Aires"
+            />
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="role-row">
+      <label class="field role-field">
+        <span>Contacto destino de respuesta</span>
+        <select id="taskResponseContactId" name="responseContactId">
+          <option value="">Sin ruteo automatico</option>
+          <% contacts.forEach(function(contact) { %>
+          <option value="<%= contact.id %>">
+            <%= contact.name %> (<%= contact.phone %>)
+          </option>
+          <% }) %>
+        </select>
+      </label>
+    </div>
+
+    <div class="role-row">
+      <label class="field role-field">
+        <span>Archivo de referencia</span>
+        <select id="taskFileId" name="fileId">
+          <option value="">Sin archivo</option>
+          <% files.forEach(function(file) { %>
+          <option value="<%= file.id %>">
+            <%= file.originalName %> (<%= file.relativePath %>)
+          </option>
+          <% }) %>
+        </select>
+      </label>
+      <div class="field role-field">
+        <span>Subir archivo nuevo</span>
+        <div class="inline-actions">
+          <input id="taskUploadFileInput" type="file" />
+          <button id="uploadTaskFileBtn" class="secondary-button" type="button">Subir</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button id="cancelTaskEditBtn" class="secondary-button hidden" type="button">
+        Cancelar edicion
+      </button>
+      <button id="saveTaskBtn" class="primary-button" type="submit">Guardar tarea</button>
+    </div>
+  </form>
+  <p id="taskMsg" class="note"></p>
+</div>
+
+<div class="card module-card mt-16">
+  <div class="card-header">
+    <h2>Tareas registradas</h2>
+  </div>
+  <% if (!tasks || tasks.length === 0) { %>
+  <p class="note">No hay tareas registradas.</p>
+  <% } else { %>
+  <div class="tasks-table-tools">
+    <label class="field">
+      <span>Buscar</span>
+      <input
+        id="tasksTableSearch"
+        type="text"
+        placeholder="Buscar en tareas..."
+        autocomplete="off"
+      />
+    </label>
+    <div class="field">
+      <span>Columnas</span>
+      <div id="tasksTableColumns" class="inline-actions"></div>
+    </div>
+    <div class="inline-actions tasks-pager">
+      <button id="tasksPrevPageBtn" class="secondary-button" type="button">Anterior</button>
+      <span id="tasksPageInfo" class="note">Pagina 1/1</span>
+      <button id="tasksNextPageBtn" class="secondary-button" type="button">Siguiente</button>
+    </div>
+  </div>
+
+  <table id="tasksTable" class="table">
+    <thead>
+      <tr>
+        <th data-col="fecha">Fecha</th>
+        <th data-col="agente">Agente</th>
+        <th data-col="estado">Estado</th>
+        <th data-col="programacion">Programacion</th>
+        <th data-col="proxima_ejecucion">Prox. ejecucion</th>
+        <th data-col="respuesta_a">Respuesta a</th>
+        <th data-col="archivo">Archivo</th>
+        <th data-col="plantilla">Plantilla</th>
+        <th data-col="input">Input</th>
+        <th data-col="acciones">Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% tasks.forEach(function(task) { %>
+      <% const agent = agents.find(function(a) { return a.id === task.agentId; }); %>
+      <tr>
+        <td data-col="fecha"><%= task.createdAt %></td>
+        <td data-col="agente"><%= agent ? agent.name : "Sin agente" %></td>
+        <td data-col="estado">
+          <span class="status-pill status-<%= String(task.status || '').toLowerCase() %>">
+            <%= task.status %>
+          </span>
+        </td>
+        <td data-col="programacion">
+          <% if (task.scheduleEnabled) { %>
+            Activa (<%= (task.scheduleDays || []).join(",") %> <%= task.scheduleTime || "" %>)
+          <% } else { %>
+            Desactivada
+          <% } %>
+        </td>
+        <td data-col="proxima_ejecucion"><%= task.nextRunAtFormatted || task.nextRunAt || "-" %></td>
+        <% const responseContact = contacts.find(function(c) { return c.id === task.responseContactId; }); %>
+        <td data-col="respuesta_a"><%= responseContact ? (responseContact.name + " (" + responseContact.phone + ")") : "Sin ruteo" %></td>
+        <% const file = files.find(function(f) { return f.id === task.fileId; }); %>
+        <td data-col="archivo"><%= file ? file.originalName : "Sin archivo" %></td>
+        <td data-col="plantilla" class="wrap-cell"><%= task.taskPromptTemplate || task.taskPrompt || "" %></td>
+        <td data-col="input" class="wrap-cell"><%= task.taskInput || "" %></td>
+        <td data-col="acciones">
+          <div class="inline-actions">
+            <button
+              class="secondary-button view-task-prompt-btn"
+              type="button"
+              data-task-id="<%= task.id %>"
+            >
+              Ver prompt final
+            </button>
+            <button
+              class="secondary-button view-task-log-btn"
+              type="button"
+              data-task-id="<%= task.id %>"
+            >
+              Ver log
+            </button>
+            <button
+              class="secondary-button edit-task-btn"
+              type="button"
+              data-id="<%= task.id %>"
+              data-agent-id="<%= task.agentId %>"
+              data-file-id="<%= task.fileId || '' %>"
+              data-response-contact-id="<%= task.responseContactId || '' %>"
+              data-schedule-enabled="<%= task.scheduleEnabled ? 'true' : 'false' %>"
+              data-schedule-days="<%= (task.scheduleDays || []).join(',') %>"
+              data-schedule-time="<%= task.scheduleTime || '' %>"
+              data-schedule-timezone="<%= task.scheduleTimezone || 'America/Argentina/Buenos_Aires' %>"
+              data-status="<%= task.status || 'draft' %>"
+            >
+              Editar
+            </button>
+            <textarea class="hidden task-template-source"><%= task.taskPromptTemplate || task.taskPrompt || "" %></textarea>
+            <textarea class="hidden task-input-source"><%= task.taskInput || "" %></textarea>
+            <button
+              class="secondary-button danger-button delete-task-btn"
+              type="button"
+              data-id="<%= task.id %>"
+            >
+              Eliminar
+            </button>
+            <% if ((task.status || 'draft') === 'draft') { %>
+            <button
+              class="primary-button queue-task-btn"
+              type="button"
+              data-id="<%= task.id %>"
+            >
+              Pasar a queued
+            </button>
+            <% } %>
+            <% if ((task.status || 'draft') === 'queued' && !task.scheduleEnabled) { %>
+            <button
+              class="primary-button execute-task-btn"
+              type="button"
+              data-id="<%= task.id %>"
+            >
+              Ejecutar
+            </button>
+            <% } %>
+          </div>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+
+<div id="taskPromptModal" class="modal-backdrop hidden">
+  <div class="modal-card">
+    <div class="card-header">
+      <h3>Prompt final (Agente + Tarea)</h3>
+    </div>
+    <pre id="taskPromptOutput" class="test-output"></pre>
+    <div class="modal-actions mt-16">
+      <button id="closeTaskPromptModalBtn" class="secondary-button" type="button">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="taskLogModal" class="modal-backdrop hidden">
+  <div class="modal-card">
+    <div class="card-header">
+      <h3>Log de ejecucion de tarea</h3>
+    </div>
+    <pre id="taskLogOutput" class="test-output"></pre>
+    <div class="modal-actions mt-16">
+      <button id="clearTaskLogsBtn" class="secondary-button danger-button" type="button">
+        Limpiar logs
+      </button>
+      <button id="closeTaskLogModalBtn" class="secondary-button" type="button">Cerrar</button>
+    </div>
+  </div>
+</div>

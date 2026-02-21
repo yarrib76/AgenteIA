@@ -1,0 +1,119 @@
+<div class="card module-card">
+  <div class="card-header">
+    <h2 id="agentFormTitle">Crear agente</h2>
+  </div>
+
+  <form id="agentForm" class="form-grid">
+    <input type="hidden" id="agentId" name="agentId" />
+    <label class="field">
+      <span>Nombre del Agente</span>
+      <input type="text" id="agentName" name="name" required />
+    </label>
+
+    <div class="role-row">
+      <label class="field role-field">
+        <span>Rol</span>
+        <select id="roleSelect" name="roleId" required>
+          <option value="">Seleccionar...</option>
+          <% roles.forEach(function(role) { %>
+          <option value="<%= role.id %>"><%= role.name %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button id="openRoleModalBtn" type="button" class="secondary-button">Crear</button>
+    </div>
+
+    <label class="field">
+      <span>Modelo</span>
+      <select id="modelSelect" name="modelId" required>
+        <option value="">Seleccionar...</option>
+        <% models.forEach(function(model) { %>
+        <option value="<%= model.id %>"><%= model.name %></option>
+        <% }) %>
+      </select>
+    </label>
+
+    <div class="modal-actions">
+      <button id="cancelEditAgentBtn" class="secondary-button hidden" type="button">
+        Cancelar edicion
+      </button>
+      <button id="saveAgentBtn" class="primary-button" type="submit">Guardar agente</button>
+    </div>
+  </form>
+  <p id="agentMsg" class="note"></p>
+</div>
+
+<div class="card module-card mt-16">
+  <div class="card-header">
+    <h2>Agentes creados</h2>
+  </div>
+  <% if (!agents || agents.length === 0) { %>
+  <p class="note">No hay agentes registrados.</p>
+  <% } else { %>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Rol</th>
+        <th>Modelo</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% agents.forEach(function(agent) { %>
+      <% const role = roles.find(function(r) { return r.id === agent.roleId; }); %>
+      <% const model = models.find(function(m) { return m.id === agent.modelId; }); %>
+      <tr>
+        <td><%= agent.name %></td>
+        <td><%= role ? role.name : "Sin rol" %></td>
+        <td><%= model ? model.name : "Sin modelo" %></td>
+        <td>
+          <div class="inline-actions">
+            <button
+              class="secondary-button edit-agent-btn"
+              type="button"
+              data-id="<%= agent.id %>"
+              data-name="<%= agent.name %>"
+              data-role-id="<%= agent.roleId %>"
+              data-model-id="<%= agent.modelId || '' %>"
+            >
+              Editar
+            </button>
+            <button
+              class="secondary-button danger-button delete-agent-btn"
+              type="button"
+              data-id="<%= agent.id %>"
+            >
+              Eliminar
+            </button>
+          </div>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+
+<div id="roleModal" class="modal-backdrop hidden">
+  <div class="modal-card">
+    <div class="card-header">
+      <h3>Crear rol</h3>
+    </div>
+    <form id="roleForm" class="form-grid">
+      <label class="field">
+        <span>Nombre del rol</span>
+        <input type="text" name="name" required />
+      </label>
+      <label class="field">
+        <span>Detalle de la funcion (prompt)</span>
+        <textarea name="detail" rows="8" required></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="closeRoleModalBtn" class="secondary-button">Cancelar</button>
+        <button type="submit" class="primary-button">Guardar rol</button>
+      </div>
+    </form>
+    <p id="roleMsg" class="note"></p>
+  </div>
+</div>

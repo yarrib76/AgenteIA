@@ -1,0 +1,41 @@
+<div class="card module-card">
+  <div class="card-header">
+    <h2>Anclaje de WhatsApp</h2>
+    <button
+      class="icon-button"
+      id="refreshQrBtn"
+      title="Actualizar QR"
+      aria-label="Actualizar QR"
+    >
+      ↻
+    </button>
+  </div>
+
+  <div class="card-body two-cols">
+    <div class="qr-wrap">
+      <div id="qrContainer" class="qr-container">
+        <% if (status.qrDataUrl) { %>
+        <img src="<%= status.qrDataUrl %>" alt="QR de WhatsApp" id="qrImage" />
+        <% } else { %>
+        <p id="qrPlaceholder">QR no disponible por el momento.</p>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="status-wrap">
+      <p><strong>Estado:</strong> <span id="statusText"><%= status.statusText %></span></p>
+      <p>
+        <strong>Celular vinculado:</strong>
+        <span id="phoneText"><%= status.phoneNumber || "Sin vincular" %></span>
+      </p>
+      <p>
+        <strong>Ultima actualizacion:</strong>
+        <span id="lastUpdate"><%= status.lastUpdate %></span>
+      </p>
+      <p class="note">
+        La vinculacion es persistente por sesion local en <code>.wwebjs_auth/</code>.
+      </p>
+    </div>
+  </div>
+</div>
+
