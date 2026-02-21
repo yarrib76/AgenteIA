@@ -91,7 +91,7 @@
           <option value="">Sin ruteo automatico</option>
           <% contacts.forEach(function(contact) { %>
           <option value="<%= contact.id %>">
-            <%= contact.name %> (<%= contact.phone %>)
+            <%= contact.name %> [<%= contact.type === "group" ? "Grupo" : "Usuario" %>] (<%= contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone %>)
           </option>
           <% }) %>
         </select>
@@ -192,7 +192,7 @@
         </td>
         <td data-col="proxima_ejecucion"><%= task.nextRunAtFormatted || task.nextRunAt || "-" %></td>
         <% const responseContact = contacts.find(function(c) { return c.id === task.responseContactId; }); %>
-        <td data-col="respuesta_a"><%= responseContact ? (responseContact.name + " (" + responseContact.phone + ")") : "Sin ruteo" %></td>
+        <td data-col="respuesta_a"><%= responseContact ? (responseContact.name + " (" + (responseContact.type === "group" ? (responseContact.groupId || responseContact.whatsappId || "-") : responseContact.phone) + ")") : "Sin ruteo" %></td>
         <% const file = files.find(function(f) { return f.id === task.fileId; }); %>
         <td data-col="archivo"><%= file ? file.originalName : "Sin archivo" %></td>
         <td data-col="plantilla" class="wrap-cell"><%= task.taskPromptTemplate || task.taskPrompt || "" %></td>

@@ -5,65 +5,144 @@ function normalizePhone(phone) {
   return String(phone || "").replace(/[^\d]/g, "");
 }
 
+function normalizeGroupId(groupId) {
+  const raw = String(groupId || "").trim().replace(/\s+/g, "");
+  if (!raw) return "";
+  if (raw.endsWith("@g.us")) return raw;
+  if (/^\d[\d\-_.:]+$/.test(raw)) return `${raw}@g.us`;
+  return "";
+}
+
+function normalizeContactType(type) {
+  const value = String(type || "").trim().toLowerCase();
+  return value === "group" ? "group" : "contact";
+}
+
+function toNormalizedContact(contact) {
+  const type = normalizeContactType(contact && contact.type);
+  const phone = normalizePhone(contact && contact.phone);
+  const groupId = normalizeGroupId(contact && (contact.groupId || contact.whatsappId));
+  const whatsappId = type === "group" ? groupId : phone;
+  return {
+    ...contact,
+    type,
+    phone: type === "contact" ? phone : "",
+    groupId: type === "group" ? groupId : "",
+    whatsappId,
+  };
+}
+
+function getContactMessageTarget(contact) {
+  const normalized = toNormalizedContact(contact || {});
+  return normalized.type === "group" ? normalized.groupId : normalized.phone;
+}
+
 async function listContacts() {
   const { contacts: contactsRepo } = getRepositories();
   const contacts = await contactsRepo.list();
-  return contacts.sort((a, b) => a.name.localeCompare(b.name, "es"));
+  return contacts
+    .map((c) => toNormalizedContact(c))
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
 }
 
-async function createContact({ name, phone }) {
+async function createContact({ name, phone, type, groupId, whatsappId }) {
+  const nextType = normalizeContactType(type);
   const trimmedName = String(name || "").trim();
   const normalizedPhone = normalizePhone(phone);
+  const normalizedGroupId = normalizeGroupId(groupId || whatsappId);
 
   if (!trimmedName) throw new Error("El nombre es obligatorio.");
-  if (!normalizedPhone) throw new Error("El numero de WhatsApp es obligatorio.");
+  if (nextType === "contact" && !normalizedPhone) {
+    throw new Error("El numero de WhatsApp es obligatorio.");
+  }
+  if (nextType === "group" && !normalizedGroupId) {
+    throw new Error("El ID de grupo es obligatorio (ej: 123456@g.us).");
+  }
 
   const { contacts: contactsRepo } = getRepositories();
-  const contacts = await contactsRepo.list();
-  const exists = contacts.some((c) => c.phone === normalizedPhone);
-  if (exists) throw new Error("Ya existe un contacto con ese numero.");
+  const contacts = (await contactsRepo.list()).map((c) => toNormalizedContact(c));
+  if (nextType === "contact") {
+    const exists = contacts.some(
+      (c) => c.type === "contact" && normalizePhone(c.phone) === normalizedPhone
+    );
+    if (exists) throw new Error("Ya existe un contacto con ese numero.");
+  }
+  if (nextType === "group") {
+    const exists = contacts.some(
+      (c) => c.type === "group" && normalizeGroupId(c.groupId) === normalizedGroupId
+    );
+    if (exists) throw new Error("Ya existe un contacto con ese grupo.");
+  }
 
   const contact = {
     id: randomUUID(),
     name: trimmedName,
-    phone: normalizedPhone,
+    type: nextType,
+    phone: nextType === "contact" ? normalizedPhone : "",
+    groupId: nextType === "group" ? normalizedGroupId : "",
+    whatsappId: nextType === "group" ? normalizedGroupId : normalizedPhone,
     createdAt: new Date().toISOString(),
   };
 
   await contactsRepo.insert(contact);
-  return contact;
+  return toNormalizedContact(contact);
 }
 
 async function getContactById(id) {
   const { contacts: contactsRepo } = getRepositories();
   const contacts = await contactsRepo.list();
-  return contacts.find((c) => c.id === id) || null;
+  const found = contacts.find((c) => c.id === id) || null;
+  return found ? toNormalizedContact(found) : null;
 }
 
-async function updateContact(contactId, { name, phone }) {
+async function updateContact(contactId, { name, phone, type, groupId, whatsappId }) {
   const targetId = String(contactId || "").trim();
   if (!targetId) throw new Error("Contacto invalido.");
 
+  const nextType = normalizeContactType(type);
   const trimmedName = String(name || "").trim();
   const normalizedPhone = normalizePhone(phone);
+  const normalizedGroupId = normalizeGroupId(groupId || whatsappId);
   if (!trimmedName) throw new Error("El nombre es obligatorio.");
-  if (!normalizedPhone) throw new Error("El numero de WhatsApp es obligatorio.");
+  if (nextType === "contact" && !normalizedPhone) {
+    throw new Error("El numero de WhatsApp es obligatorio.");
+  }
+  if (nextType === "group" && !normalizedGroupId) {
+    throw new Error("El ID de grupo es obligatorio (ej: 123456@g.us).");
+  }
 
   const { contacts: contactsRepo, taskReplyRoutes: routesRepo } = getRepositories();
-  const contacts = await contactsRepo.list();
+  const contacts = (await contactsRepo.list()).map((c) => toNormalizedContact(c));
   const index = contacts.findIndex((c) => c.id === targetId);
   if (index < 0) throw new Error("Contacto no encontrado.");
 
-  const oldPhone = normalizePhone(contacts[index].phone);
-  const duplicate = contacts.some(
-    (c) => c.id !== targetId && normalizePhone(c.phone) === normalizedPhone
-  );
-  if (duplicate) throw new Error("Ya existe otro contacto con ese numero.");
+  const oldTarget = getContactMessageTarget(contacts[index]);
+  if (nextType === "contact") {
+    const duplicate = contacts.some(
+      (c) =>
+        c.id !== targetId &&
+        c.type === "contact" &&
+        normalizePhone(c.phone) === normalizedPhone
+    );
+    if (duplicate) throw new Error("Ya existe otro contacto con ese numero.");
+  }
+  if (nextType === "group") {
+    const duplicate = contacts.some(
+      (c) =>
+        c.id !== targetId &&
+        c.type === "group" &&
+        normalizeGroupId(c.groupId) === normalizedGroupId
+    );
+    if (duplicate) throw new Error("Ya existe otro contacto con ese grupo.");
+  }
 
   const updated = {
     ...contacts[index],
     name: trimmedName,
-    phone: normalizedPhone,
+    type: nextType,
+    phone: nextType === "contact" ? normalizedPhone : "",
+    groupId: nextType === "group" ? normalizedGroupId : "",
+    whatsappId: nextType === "group" ? normalizedGroupId : normalizedPhone,
     updatedAt: new Date().toISOString(),
   };
   contacts[index] = updated;
@@ -77,13 +156,15 @@ async function updateContact(contactId, { name, phone }) {
     let changed = false;
     const next = { ...route };
     if (String(next.destinationContactId || "") === targetId) {
-      if (normalizePhone(next.destinationPhone) !== normalizedPhone) {
-        next.destinationPhone = normalizedPhone;
+      const nextDestination = getContactMessageTarget(updated);
+      if (String(next.destinationPhone || "") !== nextDestination) {
+        next.destinationPhone = nextDestination;
         changed = true;
       }
     }
-    if (oldPhone && normalizePhone(next.sourcePhone) === oldPhone && oldPhone !== normalizedPhone) {
-      next.sourcePhone = normalizedPhone;
+    const newTarget = getContactMessageTarget(updated);
+    if (oldTarget && String(next.sourcePhone || "") === oldTarget && oldTarget !== newTarget) {
+      next.sourcePhone = newTarget;
       changed = true;
     }
     if (changed) {
@@ -96,7 +177,7 @@ async function updateContact(contactId, { name, phone }) {
     await routesRepo.saveAll(nextRoutes);
   }
 
-  return updated;
+  return toNormalizedContact(updated);
 }
 
 async function deleteContact(contactId) {
@@ -142,4 +223,6 @@ module.exports = {
   updateContact,
   deleteContact,
   normalizePhone,
+  normalizeGroupId,
+  getContactMessageTarget,
 };

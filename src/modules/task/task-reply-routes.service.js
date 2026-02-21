@@ -2,13 +2,20 @@ const { randomUUID } = require("crypto");
 const { getRepositories } = require("../../repositories/repository-provider");
 const { normalizePhone } = require("../agenda/contacts.service");
 
+function normalizeContactKey(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.endsWith("@g.us")) return raw;
+  return normalizePhone(raw);
+}
+
 function normalizeRouteRow(row) {
   return {
     id: row.id || randomUUID(),
     taskId: String(row.taskId || "").trim(),
-    sourcePhone: normalizePhone(row.sourcePhone),
+    sourcePhone: normalizeContactKey(row.sourcePhone),
     destinationContactId: String(row.destinationContactId || "").trim(),
-    destinationPhone: normalizePhone(row.destinationPhone),
+    destinationPhone: normalizeContactKey(row.destinationPhone),
     enabled: row.enabled !== false,
     createdAt: row.createdAt || new Date().toISOString(),
     updatedAt: row.updatedAt || new Date().toISOString(),
@@ -42,9 +49,9 @@ async function upsertRouteForTask({
   destinationPhone,
 }) {
   const nextTaskId = String(taskId || "").trim();
-  const nextSourcePhone = normalizePhone(sourcePhone);
+  const nextSourcePhone = normalizeContactKey(sourcePhone);
   const nextDestinationContactId = String(destinationContactId || "").trim();
-  const nextDestinationPhone = normalizePhone(destinationPhone);
+  const nextDestinationPhone = normalizeContactKey(destinationPhone);
 
   if (!nextTaskId || !nextSourcePhone || !nextDestinationContactId || !nextDestinationPhone) {
     throw new Error("No se pudo crear ruta de respuesta por datos incompletos.");
@@ -86,7 +93,7 @@ async function upsertRouteForTask({
 }
 
 async function findActiveRoutesBySourcePhone(sourcePhone) {
-  const key = normalizePhone(sourcePhone);
+  const key = normalizeContactKey(sourcePhone);
   if (!key) return [];
   const rows = await listRoutes();
   return rows.filter((row) => row.enabled && row.sourcePhone === key);

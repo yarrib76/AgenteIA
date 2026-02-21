@@ -6,12 +6,29 @@
   <form id="agendaForm" class="form-grid">
     <input type="hidden" id="contactId" name="contactId" />
     <label class="field">
+      <span>Tipo</span>
+      <select id="contactType" name="type" required>
+        <option value="contact">Usuario</option>
+        <option value="group">Grupo</option>
+      </select>
+    </label>
+    <label class="field">
       <span>Nombre</span>
       <input type="text" name="name" required maxlength="80" />
     </label>
-    <label class="field">
+    <label id="contactPhoneField" class="field">
       <span>Numero WhatsApp</span>
       <input type="text" name="phone" required maxlength="20" placeholder="54911..." />
+    </label>
+    <label id="contactGroupField" class="field hidden">
+      <span>Grupo WhatsApp</span>
+      <div class="inline-actions">
+        <select id="contactGroupId" name="groupId">
+          <option value="">Seleccionar grupo...</option>
+        </select>
+        <button id="refreshGroupsBtn" class="secondary-button" type="button">Actualizar</button>
+      </div>
+      <small class="note">Se listan los grupos visibles para el telefono vinculado.</small>
     </label>
     <div class="inline-actions">
       <button id="saveContactBtn" class="primary-button" type="submit">Guardar contacto</button>
@@ -36,6 +53,7 @@
       <thead>
         <tr>
           <th>Nombre</th>
+          <th>Tipo</th>
           <th>WhatsApp</th>
           <th>Acciones</th>
         </tr>
@@ -44,7 +62,8 @@
         <% contacts.forEach(function(contact) { %>
         <tr>
           <td><%= contact.name %></td>
-          <td><%= contact.phone %></td>
+          <td><%= contact.type === "group" ? "Grupo" : "Usuario" %></td>
+          <td><%= contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone %></td>
           <td>
             <div class="inline-actions">
               <button
@@ -52,7 +71,9 @@
                 type="button"
                 data-id="<%= contact.id %>"
                 data-name="<%= contact.name %>"
+                data-type="<%= contact.type || 'contact' %>"
                 data-phone="<%= contact.phone %>"
+                data-group-id="<%= contact.groupId || contact.whatsappId || '' %>"
               >
                 Editar
               </button>

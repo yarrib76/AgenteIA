@@ -2,6 +2,7 @@ let gateway = {
   sendMessage: null,
   isReady: null,
   resolveContactKeys: null,
+  listGroups: null,
 };
 
 function setGateway(nextGateway) {
@@ -28,9 +29,15 @@ async function resolveContactKeys(phone) {
   return gateway.resolveContactKeys(phone);
 }
 
+async function listGroups() {
+  if (!gateway.listGroups) return [];
+  return gateway.listGroups();
+}
+
 module.exports = {
   setGateway,
   sendMessage,
   isReady,
   resolveContactKeys,
+  listGroups,
 };

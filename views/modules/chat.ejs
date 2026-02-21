@@ -10,7 +10,7 @@
         <option value="">Seleccionar...</option>
         <% contacts.forEach(function(contact) { %>
         <option value="<%= contact.id %>" <%= selectedContactId === contact.id ? "selected" : "" %>>
-          <%= contact.name %> (<%= contact.phone %>)
+          <%= contact.name %> [<%= contact.type === "group" ? "Grupo" : "Usuario" %>] (<%= contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone %>)
         </option>
         <% }) %>
       </select>

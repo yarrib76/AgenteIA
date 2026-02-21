@@ -2,30 +2,36 @@ const { randomUUID } = require("crypto");
 const { normalizePhone } = require("../agenda/contacts.service");
 const { getRepositories } = require("../../repositories/repository-provider");
 
-async function listMessagesByPhone(phone, limit = 40) {
-  const normalizedPhone = normalizePhone(phone);
-  if (!normalizedPhone) return [];
+function normalizeContactKey(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.includes("@g.us")) return raw;
+  return normalizePhone(raw);
+}
 
-  return listMessagesByPhones([normalizedPhone], limit);
+async function listMessagesByPhone(phone, limit = 40) {
+  const normalized = normalizeContactKey(phone);
+  if (!normalized) return [];
+  return listMessagesByPhones([normalized], limit);
 }
 
 async function listMessagesByPhones(phones, limit = 40) {
   const normalizedPhones = Array.from(
-    new Set((phones || []).map((p) => normalizePhone(p)).filter(Boolean))
+    new Set((phones || []).map((p) => normalizeContactKey(p)).filter(Boolean))
   );
   if (normalizedPhones.length === 0) return [];
 
   const { messages: messagesRepo } = getRepositories();
   const messages = await messagesRepo.list();
   return messages
-    .filter((m) => normalizedPhones.includes(normalizePhone(m.contactPhone)))
+    .filter((m) => normalizedPhones.includes(normalizeContactKey(m.contactPhone)))
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
     .slice(-limit);
 }
 
 async function addMessage({ contactPhone, direction, text, status = "ok" }) {
-  const normalizedPhone = normalizePhone(contactPhone);
-  if (!normalizedPhone) throw new Error("Numero de contacto invalido.");
+  const normalizedPhone = normalizeContactKey(contactPhone);
+  if (!normalizedPhone) throw new Error("Identificador de contacto invalido.");
   if (!text || !String(text).trim()) throw new Error("Mensaje vacio.");
 
   const message = {
@@ -47,14 +53,14 @@ async function addMessage({ contactPhone, direction, text, status = "ok" }) {
 
 async function deleteMessagesByPhones(phones) {
   const normalizedPhones = Array.from(
-    new Set((phones || []).map((p) => normalizePhone(p)).filter(Boolean))
+    new Set((phones || []).map((p) => normalizeContactKey(p)).filter(Boolean))
   );
   if (normalizedPhones.length === 0) return 0;
 
   const { messages: messagesRepo } = getRepositories();
   const messages = await messagesRepo.list();
   const kept = messages.filter(
-    (m) => !normalizedPhones.includes(normalizePhone(m.contactPhone))
+    (m) => !normalizedPhones.includes(normalizeContactKey(m.contactPhone))
   );
   const deletedCount = messages.length - kept.length;
   if (deletedCount > 0) {
@@ -68,4 +74,5 @@ module.exports = {
   listMessagesByPhones,
   addMessage,
   deleteMessagesByPhones,
+  normalizeContactKey,
 };

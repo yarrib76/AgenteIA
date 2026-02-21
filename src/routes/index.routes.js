@@ -20,6 +20,7 @@ router.get("/tareas/nueva", taskController.renderNewTaskPage);
 router.get("/archivos/gestionar", fileController.renderManageFilesPage);
 
 router.get("/api/whatsapp/status", whatsappController.getStatus);
+router.get("/api/whatsapp/groups", whatsappController.listGroups);
 router.post("/api/whatsapp/qr/refresh", whatsappController.refreshQr);
 router.get("/api/contacts", agendaController.listContacts);
 router.post("/api/contacts", agendaController.createContact);

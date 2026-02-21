@@ -1,4 +1,5 @@
 const whatsappService = require("../modules/whatsapp/whatsapp.state");
+const whatsappGateway = require("../modules/whatsapp/whatsapp.gateway");
 
 function renderDashboard(req, res) {
   const status = whatsappService.getPublicStatus();
@@ -34,8 +35,18 @@ async function refreshQr(req, res) {
   }
 }
 
+async function listGroups(req, res) {
+  try {
+    const groups = await whatsappGateway.listGroups();
+    res.json({ ok: true, groups });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message });
+  }
+}
+
 module.exports = {
   renderDashboard,
   getStatus,
   refreshQr,
+  listGroups,
 };

@@ -175,31 +175,61 @@ function buildActionContractPrompt() {
   return [
     "Responde SOLO en JSON valido, sin markdown.",
     "Esquema de salida:",
-    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contact":"nombre o numero","message":"texto"}] }',
+    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}] }',
     "Si no hay accion, enviar actions: [].",
     "Si la accion es send_whatsapp, el campo message debe comenzar exactamente con el detalle del rol del agente.",
+    "Si hay lista de contactos disponible, prioriza devolver contactId.",
     "No inventes contactos inexistentes.",
   ].join("\n");
 }
 
-function ensureMessageStartsWithRoleDetail(message, roleDetail) {
-  const text = normalizeText(message);
-  if (!text) return text;
-  const prefix = normalizeText(roleDetail);
-  if (!prefix) return text;
+function buildForceWhatsAppRetryPrompt({
+  mergedPrompt,
+  runtimeFileContext,
+  contactsReferenceText,
+  lastResultSummary,
+}) {
+  return [
+    mergedPrompt,
+    runtimeFileContext || "",
+    contactsReferenceText || "",
+    "",
+    "REINTENTO OBLIGATORIO.",
+    "La tarea requiere enviar WhatsApp.",
+    "Responde SOLO en JSON valido, sin markdown.",
+    "Devuelve EXACTAMENTE 1 accion en actions con type=send_whatsapp.",
+    "No permitas actions vacio.",
+    "Si result_summary ya contiene el contenido, usalo para el campo message.",
+    "Si hay lista de contactos, devuelve contactId para evitar ambiguedad.",
+    "Esquema estricto:",
+    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}]}',
+    lastResultSummary
+      ? `Resultado previo disponible: ${String(lastResultSummary)}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
 
-  const textNormalized = normalizeCompareText(text);
-  const prefixNormalized = normalizeCompareText(prefix);
-  if (textNormalized.startsWith(prefixNormalized)) return text;
+function toPromptPreview(text, maxChars = 12000) {
+  const raw = String(text || "");
+  if (raw.length <= maxChars) return raw;
+  return `${raw.slice(0, maxChars)}\n\n[TRUNCADO ${raw.length - maxChars} caracteres]`;
+}
 
-  const firstLine = normalizeText(prefix.split(/\r?\n/)[0] || "");
-  const firstSentence = normalizeText((prefix.match(/[^.!?]+[.!?]?/) || [prefix])[0]);
-  const firstLineNormalized = normalizeCompareText(firstLine);
-  const firstSentenceNormalized = normalizeCompareText(firstSentence);
-  if (firstLineNormalized && textNormalized.startsWith(firstLineNormalized)) return text;
-  if (firstSentenceNormalized && textNormalized.startsWith(firstSentenceNormalized)) return text;
-
-  return `${prefix}\n\n${text}`.trim();
+function buildContactsReferenceText(contacts) {
+  const rows = Array.isArray(contacts) ? contacts : [];
+  if (rows.length === 0) return "";
+  const compact = rows.slice(0, 200).map((c) => ({
+    id: c.id,
+    name: c.name,
+    type: c.type || "contact",
+    target: contactsService.getContactMessageTarget(c),
+  }));
+  return [
+    "Contactos disponibles (usar contactId cuando corresponda):",
+    JSON.stringify(compact),
+  ].join("\n");
 }
 
 function parseModelOutputToJson(rawOutput) {
@@ -497,9 +527,12 @@ async function resolveContact(contactRaw) {
 
   const contacts = await contactsService.listContacts();
   const normalizedLookup = contactsService.normalizePhone(lookup);
+  const normalizedGroupLookup = contactsService.normalizeGroupId(lookup);
 
-  const directPhone = contacts.find((c) => c.phone === normalizedLookup);
+  const directPhone = contacts.find((c) => c.type === "contact" && c.phone === normalizedLookup);
   if (directPhone) return directPhone;
+  const directGroup = contacts.find((c) => c.type === "group" && c.groupId === normalizedGroupLookup);
+  if (directGroup) return directGroup;
 
   const byName = contacts.find(
     (c) => String(c.name || "").trim().toLowerCase() === lookup.toLowerCase()
@@ -514,15 +547,25 @@ async function resolveContact(contactRaw) {
   throw new Error(`No se encontro contacto en Agenda: ${lookup}`);
 }
 
+async function resolveContactFromAction(action) {
+  const contactId = normalizeText(action && action.contactId);
+  if (contactId) {
+    const byId = await contactsService.getContactById(contactId);
+    if (byId) return byId;
+  }
+  return resolveContact(action && action.contact);
+}
+
 async function executeSendWhatsAppAction(task, action, context) {
-  const contact = await resolveContact(action.contact);
+  const contact = await resolveContactFromAction(action);
+  const contactTarget = contactsService.getContactMessageTarget(contact);
   const roleDetail = normalizeText(context && context.role ? context.role.detail : "");
-  const message = ensureMessageStartsWithRoleDetail(action.message, roleDetail);
+  const message = normalizeText(action.message);
   if (!message) throw new Error("Accion send_whatsapp sin mensaje.");
 
-  await whatsappGateway.sendMessage(contact.phone, message);
+  await whatsappGateway.sendMessage(contactTarget, message);
   await messagesService.addMessage({
-    contactPhone: contact.phone,
+    contactPhone: contactTarget,
     direction: "out",
     text: message,
     status: "sent",
@@ -532,11 +575,12 @@ async function executeSendWhatsAppAction(task, action, context) {
   if (task && task.responseContactId) {
     const destination = await contactsService.getContactById(task.responseContactId);
     if (destination) {
+      const destinationTarget = contactsService.getContactMessageTarget(destination);
       replyRoute = await taskReplyRoutesService.upsertRouteForTask({
         taskId: task.id,
-        sourcePhone: contact.phone,
+        sourcePhone: contactTarget,
         destinationContactId: destination.id,
-        destinationPhone: destination.phone,
+        destinationPhone: destinationTarget,
       });
     }
   }
@@ -544,9 +588,14 @@ async function executeSendWhatsAppAction(task, action, context) {
   return {
     contactId: contact.id,
     contactName: contact.name,
-    phone: contact.phone,
+    phone: contactTarget,
+    finalMessage: message,
     sent: true,
-    roleDetailPrepended: Boolean(roleDetail) && !normalizeText(action.message).startsWith(roleDetail),
+    roleDetailPrepended: false,
+    roleDetailExpected: roleDetail || null,
+    modelMessageStartsWithRoleDetail:
+      Boolean(roleDetail) &&
+      normalizeCompareText(message).startsWith(normalizeCompareText(roleDetail)),
     replyRoute: replyRoute
       ? {
           routeId: replyRoute.id,
@@ -645,6 +694,8 @@ async function executeTask(taskId, options = {}) {
   try {
     let runtimeFileContext = "";
     let fileAttachment = null;
+    const availableContacts = await contactsService.listContacts();
+    const contactsReferenceText = buildContactsReferenceText(availableContacts);
     if (task.fileId) {
       const fileContext = await filesService.getFileRuntimeContext(task.fileId);
       if (fileContext) {
@@ -689,11 +740,16 @@ async function executeTask(taskId, options = {}) {
     const modelPrompt = [
       task.mergedPrompt,
       runtimeFileContext,
+      contactsReferenceText,
       "",
       buildActionContractPrompt(),
     ]
       .filter(Boolean)
       .join("\n\n");
+    task = appendLog(task, "prompt_prepared", "ok", "Prompt preparado para modelo", {
+      promptLength: modelPrompt.length,
+      promptPreview: toPromptPreview(modelPrompt),
+    });
 
     task = appendLog(task, "model_call", "running", "Llamando al modelo", {
       provider: model.provider,
@@ -716,11 +772,68 @@ async function executeTask(taskId, options = {}) {
       outputLength: String(output || "").length,
     });
 
-    const parsed = parseModelOutputToJson(output);
+    let parsed = parseModelOutputToJson(output);
     task = appendLog(task, "parse_output", "ok", "Salida parseada a JSON", {
       keys: Object.keys(parsed || {}),
       actionsCount: Array.isArray(parsed.actions) ? parsed.actions.length : 0,
     });
+
+    if (requiresWhatsAppAction(task)) {
+      const initialActions = Array.isArray(parsed.actions) ? parsed.actions : [];
+      const hasWhatsAppAction = initialActions.some(
+        (a) => normalizeText(a && a.type).toLowerCase() === "send_whatsapp"
+      );
+      if (!hasWhatsAppAction) {
+        const retryPrompt = buildForceWhatsAppRetryPrompt({
+          mergedPrompt: task.mergedPrompt,
+          runtimeFileContext,
+          contactsReferenceText,
+          lastResultSummary: parsed.result_summary,
+        });
+        task = appendLog(
+          task,
+          "prompt_retry_prepared",
+          "ok",
+          "Prompt de reintento preparado",
+          {
+            promptLength: retryPrompt.length,
+            promptPreview: toPromptPreview(retryPrompt),
+          }
+        );
+        task = appendLog(
+          task,
+          "model_call_retry",
+          "running",
+          "Reintentando modelo para forzar accion send_whatsapp",
+          {
+            provider: model.provider,
+            modelId: model.modelId,
+          }
+        );
+        tasks[index] = task;
+        await tasksRepo.saveAll(tasks);
+
+        const retryOutput = await modelTestService.testModel({
+          envKey: model.envKey,
+          modelName: model.name,
+          provider: model.provider,
+          modelId: model.modelId,
+          baseUrl: model.baseUrl,
+          message: retryPrompt,
+          fileAttachment,
+        });
+        task = appendLog(task, "model_call_retry", "ok", "Respuesta de reintento recibida", {
+          outputLength: String(retryOutput || "").length,
+        });
+
+        const retryParsed = parseModelOutputToJson(retryOutput);
+        task = appendLog(task, "parse_output_retry", "ok", "Salida de reintento parseada", {
+          keys: Object.keys(retryParsed || {}),
+          actionsCount: Array.isArray(retryParsed.actions) ? retryParsed.actions.length : 0,
+        });
+        parsed = retryParsed;
+      }
+    }
 
     const actionResults = await executeActions(task, parsed, { agent, role });
     const failedActions = actionResults.filter((a) => !a.ok);

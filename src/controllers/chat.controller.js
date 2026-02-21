@@ -7,8 +7,11 @@ async function renderChatPage(req, res) {
   const selectedContactId = req.query.contactId || (contacts[0] && contacts[0].id);
   const selectedContact =
     contacts.find((contact) => contact.id === selectedContactId) || null;
+  const selectedTarget = selectedContact
+    ? contactsService.getContactMessageTarget(selectedContact)
+    : "";
   const contactKeys = selectedContact
-    ? await whatsappGateway.resolveContactKeys(selectedContact.phone)
+    ? await whatsappGateway.resolveContactKeys(selectedTarget)
     : [];
   const messages = selectedContact
     ? await messagesService.listMessagesByPhones(contactKeys, 40)
@@ -36,7 +39,8 @@ async function getConversation(req, res) {
     return res.status(404).json({ ok: false, message: "Contacto no encontrado." });
   }
 
-  const contactKeys = await whatsappGateway.resolveContactKeys(contact.phone);
+  const target = contactsService.getContactMessageTarget(contact);
+  const contactKeys = await whatsappGateway.resolveContactKeys(target);
   const messages = await messagesService.listMessagesByPhones(contactKeys, 40);
   return res.json({ ok: true, contact, messages });
 }
@@ -54,9 +58,10 @@ async function sendMessage(req, res) {
       return res.status(400).json({ ok: false, message: "Escribe un mensaje." });
     }
 
-    const result = await whatsappGateway.sendMessage(contact.phone, text);
+    const target = contactsService.getContactMessageTarget(contact);
+    const result = await whatsappGateway.sendMessage(target, text);
     const saved = await messagesService.addMessage({
-      contactPhone: (result && result.contactKey) || contact.phone,
+      contactPhone: (result && result.contactKey) || target,
       direction: "out",
       text,
       status: "sent",
@@ -76,7 +81,8 @@ async function clearConversation(req, res) {
       return res.status(404).json({ ok: false, message: "Contacto no encontrado." });
     }
 
-    const contactKeys = await whatsappGateway.resolveContactKeys(contact.phone);
+    const target = contactsService.getContactMessageTarget(contact);
+    const contactKeys = await whatsappGateway.resolveContactKeys(target);
     const deletedCount = await messagesService.deleteMessagesByPhones(contactKeys);
     return res.json({ ok: true, deletedCount });
   } catch (error) {

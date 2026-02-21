@@ -4,7 +4,8 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const whatsappState = require("./whatsapp.state");
 const whatsappGateway = require("./whatsapp.gateway");
 const { addMessage } = require("../chat/messages.service");
-const { normalizePhone } = require("../agenda/contacts.service");
+const contactsService = require("../agenda/contacts.service");
+const { normalizePhone } = contactsService;
 const contactAliasesService = require("../agenda/contact-aliases.service");
 const taskReplyRoutesService = require("../task/task-reply-routes.service");
 
@@ -74,7 +75,9 @@ function buildWhatsAppService() {
   }
 
   function toChatId(phone) {
-    const normalized = normalizePhone(phone);
+    const raw = String(phone || "").trim();
+    if (raw.endsWith("@g.us")) return raw;
+    const normalized = normalizePhone(raw);
     if (!normalized) {
       throw new Error("Numero de WhatsApp invalido.");
     }
@@ -83,10 +86,15 @@ function buildWhatsAppService() {
 
   function toContactKeyFromChatId(chatId) {
     if (!chatId) return null;
-    return normalizePhone(String(chatId).split("@")[0]);
+    const raw = String(chatId).trim();
+    if (raw.endsWith("@g.us")) return raw;
+    return normalizePhone(raw.split("@")[0]);
   }
 
   async function resolveContactKeysInternal(phone) {
+    const raw = String(phone || "").trim();
+    if (raw.endsWith("@g.us")) return [raw];
+
     const keys = new Set(await contactAliasesService.getAliases(phone));
     const normalized = normalizePhone(phone);
     if (normalized) keys.add(normalized);
@@ -111,10 +119,34 @@ function buildWhatsAppService() {
     return Array.from(keys);
   }
 
+  async function listGroupsInternal() {
+    if (!client) throw new Error("Cliente de WhatsApp no disponible.");
+    const status = whatsappState.getPublicStatus();
+    if (!status.linked) throw new Error("WhatsApp no esta vinculado.");
+
+    const chats = await client.getChats();
+    return (chats || [])
+      .filter((chat) => chat && chat.isGroup && chat.id && chat.id._serialized)
+      .map((chat) => ({
+        id: chat.id._serialized,
+        name: String(chat.name || "Grupo sin nombre"),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }
+
   async function sendMessageInternal(phone, text) {
     if (!client) throw new Error("Cliente de WhatsApp no disponible.");
     const status = whatsappState.getPublicStatus();
     if (!status.linked) throw new Error("WhatsApp no esta vinculado.");
+
+    const rawTarget = String(phone || "").trim();
+    if (rawTarget.endsWith("@g.us")) {
+      await client.sendMessage(rawTarget, text);
+      return {
+        chatId: rawTarget,
+        contactKey: rawTarget,
+      };
+    }
 
     let chatId = toChatId(phone);
     try {
@@ -150,9 +182,22 @@ function buildWhatsAppService() {
     };
   }
 
-  async function routeTaskReplyIfNeeded(sourcePhone, text) {
+  async function routeTaskReplyIfNeeded({
+    sourcePhone,
+    text,
+    isGroup = false,
+    groupName = "",
+    authorName = "",
+    authorPhone = "",
+  }) {
     const routes = await taskReplyRoutesService.findActiveRoutesBySourcePhone(sourcePhone);
     if (!routes || routes.length === 0) return;
+
+    const finalText = isGroup
+      ? `[Grupo: ${String(groupName || sourcePhone)}] [Autor: ${String(
+          authorName || authorPhone || "desconocido"
+        )}]\n${String(text || "")}`
+      : String(text || "");
 
     const dedup = new Map();
     for (const route of routes) {
@@ -164,11 +209,11 @@ function buildWhatsAppService() {
 
     for (const route of dedup.values()) {
       try {
-        await sendMessageInternal(route.destinationPhone, text);
+        await sendMessageInternal(route.destinationPhone, finalText);
         await addMessage({
           contactPhone: route.destinationPhone,
           direction: "out",
-          text,
+          text: finalText,
           status: "routed_from_task_reply",
         });
       } catch (error) {
@@ -319,13 +364,19 @@ function buildWhatsAppService() {
       client.on("message", async (message) => {
         try {
           if (message.fromMe) return;
-          if (!message.from || message.from.includes("@g.us")) return;
+          if (!message.from) return;
           const fromRaw = String(message.from);
-          const fromKey = normalizePhone(fromRaw.split("@")[0]);
-          let contactPhone =
-            (await contactAliasesService.findCanonicalByAlias(fromKey)) || fromKey;
+          const isGroup = fromRaw.endsWith("@g.us");
+          const contacts = await contactsService.listContacts();
+          const fromKey = isGroup ? fromRaw : normalizePhone(fromRaw.split("@")[0]);
+          let contactPhone = isGroup
+            ? fromRaw
+            : (await contactAliasesService.findCanonicalByAlias(fromKey)) || fromKey;
+          let groupName = "";
+          let authorPhone = "";
+          let authorName = "";
 
-          if (fromRaw.endsWith("@lid")) {
+          if (!isGroup && fromRaw.endsWith("@lid")) {
             try {
               const resolved = await client.getContactLidAndPhone([fromRaw]);
               const first = resolved && resolved[0] ? resolved[0] : null;
@@ -338,6 +389,36 @@ function buildWhatsAppService() {
               // fallback a alias local.
             }
           }
+          if (isGroup) {
+            try {
+              const chat = await message.getChat();
+              groupName = String((chat && chat.name) || "");
+            } catch (error) {
+              groupName = "";
+            }
+            const authorRaw = String(message.author || "").trim();
+            authorPhone = authorRaw ? normalizePhone(authorRaw.split("@")[0]) : "";
+            if (authorRaw.endsWith("@lid")) {
+              try {
+                const resolved = await client.getContactLidAndPhone([authorRaw]);
+                const first = resolved && resolved[0] ? resolved[0] : null;
+                const pnKey = toContactKeyFromChatId(first && first.pn);
+                if (pnKey) {
+                  authorPhone = pnKey;
+                  await contactAliasesService.addAliases(pnKey, [
+                    normalizePhone(authorRaw.split("@")[0]),
+                    pnKey,
+                  ]);
+                }
+              } catch (error) {
+                // fallback al valor disponible.
+              }
+            }
+            if (authorPhone) {
+              const authorContact = contacts.find((c) => c.type === "contact" && c.phone === authorPhone);
+              authorName = authorContact ? String(authorContact.name || "") : "";
+            }
+          }
 
           const text = message.body || "";
           if (!text.trim()) return;
@@ -347,7 +428,14 @@ function buildWhatsAppService() {
             text,
             status: "received",
           });
-          await routeTaskReplyIfNeeded(contactPhone, text);
+          await routeTaskReplyIfNeeded({
+            sourcePhone: contactPhone,
+            text,
+            isGroup,
+            groupName,
+            authorName,
+            authorPhone,
+          });
         } catch (error) {
           // No interrumpir la sesion por falla de persistencia.
         }
@@ -418,6 +506,7 @@ function buildWhatsAppService() {
       return Boolean(status.linked);
     },
     resolveContactKeys: resolveContactKeysInternal,
+    listGroups: listGroupsInternal,
   });
 
   return {
