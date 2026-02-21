@@ -4,6 +4,7 @@
   </div>
 
   <form id="agendaForm" class="form-grid">
+    <input type="hidden" id="contactId" name="contactId" />
     <label class="field">
       <span>Nombre</span>
       <input type="text" name="name" required maxlength="80" />
@@ -12,7 +13,12 @@
       <span>Numero WhatsApp</span>
       <input type="text" name="phone" required maxlength="20" placeholder="54911..." />
     </label>
-    <button class="primary-button" type="submit">Guardar contacto</button>
+    <div class="inline-actions">
+      <button id="saveContactBtn" class="primary-button" type="submit">Guardar contacto</button>
+      <button id="cancelEditContactBtn" class="secondary-button hidden" type="button">
+        Cancelar edicion
+      </button>
+    </div>
   </form>
 
   <p id="agendaMsg" class="note"></p>
@@ -31,6 +37,7 @@
         <tr>
           <th>Nombre</th>
           <th>WhatsApp</th>
+          <th>Acciones</th>
         </tr>
       </thead>
       <tbody>
@@ -38,6 +45,27 @@
         <tr>
           <td><%= contact.name %></td>
           <td><%= contact.phone %></td>
+          <td>
+            <div class="inline-actions">
+              <button
+                class="secondary-button edit-contact-btn"
+                type="button"
+                data-id="<%= contact.id %>"
+                data-name="<%= contact.name %>"
+                data-phone="<%= contact.phone %>"
+              >
+                Editar
+              </button>
+              <button
+                class="secondary-button danger-button delete-contact-btn"
+                type="button"
+                data-id="<%= contact.id %>"
+                data-name="<%= contact.name %>"
+              >
+                Eliminar
+              </button>
+            </div>
+          </td>
         </tr>
         <% }) %>
       </tbody>
@@ -45,4 +73,3 @@
     <% } %>
   </div>
 </div>
-

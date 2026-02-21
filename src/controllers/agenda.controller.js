@@ -26,9 +26,28 @@ async function createContact(req, res) {
   }
 }
 
+async function updateContact(req, res) {
+  try {
+    const contact = await contactsService.updateContact(req.params.contactId, req.body);
+    res.json({ ok: true, contact });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message });
+  }
+}
+
+async function deleteContact(req, res) {
+  try {
+    const contact = await contactsService.deleteContact(req.params.contactId);
+    res.json({ ok: true, contact });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message });
+  }
+}
+
 module.exports = {
   renderAgendaPage,
   listContacts,
   createContact,
+  updateContact,
+  deleteContact,
 };
-

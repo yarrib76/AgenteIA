@@ -22,6 +22,7 @@ function createJsonDriver() {
         rows.push(contact);
         await writeJson(files.contacts, rows);
       },
+      saveAll: (rows) => writeJson(files.contacts, rows),
     },
     messages: {
       list: () => readJson(files.messages, []),

@@ -23,6 +23,8 @@ router.get("/api/whatsapp/status", whatsappController.getStatus);
 router.post("/api/whatsapp/qr/refresh", whatsappController.refreshQr);
 router.get("/api/contacts", agendaController.listContacts);
 router.post("/api/contacts", agendaController.createContact);
+router.put("/api/contacts/:contactId", agendaController.updateContact);
+router.delete("/api/contacts/:contactId", agendaController.deleteContact);
 router.get("/api/chat/:contactId/messages", chatController.getConversation);
 router.post("/api/chat/send", chatController.sendMessage);
 router.post("/api/chat/clear", chatController.clearConversation);
