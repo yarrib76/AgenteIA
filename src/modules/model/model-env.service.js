@@ -29,7 +29,7 @@ async function getKeyValue(key) {
     const parsed = parseEnvLine(line);
     if (parsed && parsed.key === key) return parsed.value;
   }
-  return "";
+  return String(process.env[key] || "");
 }
 
 async function upsertKey(key, value = "") {
@@ -61,4 +61,3 @@ module.exports = {
   upsertKey,
   removeKey,
 };
-
