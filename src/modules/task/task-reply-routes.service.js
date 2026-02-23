@@ -16,6 +16,7 @@ function normalizeRouteRow(row) {
     sourcePhone: normalizeContactKey(row.sourcePhone),
     destinationContactId: String(row.destinationContactId || "").trim(),
     destinationPhone: normalizeContactKey(row.destinationPhone),
+    originalMessage: String(row.originalMessage || "").trim(),
     enabled: row.enabled !== false,
     createdAt: row.createdAt || new Date().toISOString(),
     updatedAt: row.updatedAt || new Date().toISOString(),
@@ -47,11 +48,13 @@ async function upsertRouteForTask({
   sourcePhone,
   destinationContactId,
   destinationPhone,
+  originalMessage,
 }) {
   const nextTaskId = String(taskId || "").trim();
   const nextSourcePhone = normalizeContactKey(sourcePhone);
   const nextDestinationContactId = String(destinationContactId || "").trim();
   const nextDestinationPhone = normalizeContactKey(destinationPhone);
+  const nextOriginalMessage = String(originalMessage || "").trim();
 
   if (!nextTaskId || !nextSourcePhone || !nextDestinationContactId || !nextDestinationPhone) {
     throw new Error("No se pudo crear ruta de respuesta por datos incompletos.");
@@ -68,6 +71,7 @@ async function upsertRouteForTask({
       ...row,
       destinationContactId: nextDestinationContactId,
       destinationPhone: nextDestinationPhone,
+      originalMessage: nextOriginalMessage,
       enabled: true,
       updatedAt: now,
     };
@@ -80,6 +84,7 @@ async function upsertRouteForTask({
       sourcePhone: nextSourcePhone,
       destinationContactId: nextDestinationContactId,
       destinationPhone: nextDestinationPhone,
+      originalMessage: nextOriginalMessage,
       enabled: true,
       createdAt: now,
       updatedAt: now,

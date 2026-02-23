@@ -193,12 +193,6 @@ function buildWhatsAppService() {
     const routes = await taskReplyRoutesService.findActiveRoutesBySourcePhone(sourcePhone);
     if (!routes || routes.length === 0) return;
 
-    const finalText = isGroup
-      ? `[Grupo: ${String(groupName || sourcePhone)}] [Autor: ${String(
-          authorName || authorPhone || "desconocido"
-        )}]\n${String(text || "")}`
-      : String(text || "");
-
     const dedup = new Map();
     for (const route of routes) {
       if (!route.destinationPhone) continue;
@@ -209,6 +203,17 @@ function buildWhatsAppService() {
 
     for (const route of dedup.values()) {
       try {
+        const headerLine = isGroup
+          ? `[Grupo: ${String(groupName || sourcePhone)}] [Autor: ${String(
+              authorName || authorPhone || "desconocido"
+            )}]`
+          : `[Autor: ${String(authorName || authorPhone || sourcePhone || "desconocido")}]`;
+        const originalLine = String(route.originalMessage || "").trim()
+          ? `Mensaje original:\n${String(route.originalMessage || "").trim()}`
+          : "Mensaje original:\n(No disponible)";
+        const replyLine = `Respuesta entrante:\n${String(text || "").trim()}`;
+        const finalText = [headerLine, originalLine, replyLine].join("\n\n");
+
         await sendMessageInternal(route.destinationPhone, finalText);
         await addMessage({
           contactPhone: route.destinationPhone,

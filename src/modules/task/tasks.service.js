@@ -866,6 +866,7 @@ async function executeSendWhatsAppAction(task, action, context, resolvedContact)
         sourcePhone: contactTarget,
         destinationContactId: destination.id,
         destinationPhone: destinationTarget,
+        originalMessage: message,
       });
     }
   }
