@@ -31,7 +31,7 @@
     <% messages.forEach(function(msg) { %>
     <div class="message <%= msg.direction === 'out' ? 'out' : 'in' %>">
       <div class="bubble"><%= msg.text %></div>
-      <span class="meta"><%= msg.timestamp %></span>
+      <span class="meta"><%= msg.timestampFormatted || msg.timestamp %></span>
     </div>
     <% }) %>
     <% } %>

@@ -2,6 +2,22 @@ const contactsService = require("../modules/agenda/contacts.service");
 const messagesService = require("../modules/chat/messages.service");
 const whatsappGateway = require("../modules/whatsapp/whatsapp.gateway");
 
+function formatDateTime(value, timeZone = "America/Argentina/Buenos_Aires") {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 async function renderChatPage(req, res) {
   const contacts = await contactsService.listContacts();
   const selectedContactId = req.query.contactId || (contacts[0] && contacts[0].id);
@@ -16,6 +32,10 @@ async function renderChatPage(req, res) {
   const messages = selectedContact
     ? await messagesService.listMessagesByPhones(contactKeys, 40)
     : [];
+  const messagesWithFormattedTime = (messages || []).map((msg) => ({
+    ...msg,
+    timestampFormatted: formatDateTime(msg.timestamp),
+  }));
 
   res.render("layouts/main", {
     pageTitle: "Chat - Panel Multi Agente IA",
@@ -25,7 +45,7 @@ async function renderChatPage(req, res) {
     moduleData: {
       contacts,
       selectedContactId: selectedContact ? selectedContact.id : "",
-      messages,
+      messages: messagesWithFormattedTime,
       whatsappReady: whatsappGateway.isReady(),
     },
     pageScripts: ["/js/chat.js"],

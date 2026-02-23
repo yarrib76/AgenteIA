@@ -7,6 +7,7 @@
   const clearHistoryBtn = document.getElementById("clearHistoryBtn");
   let refreshTimer = null;
   let lastRenderedFingerprint = "";
+  const chatTimeZone = "America/Argentina/Buenos_Aires";
 
   if (!contactSelect || !chatForm) return;
 
@@ -26,13 +27,30 @@
     chatWindow.innerHTML = messages
       .map((msg) => {
         const cls = msg.direction === "out" ? "out" : "in";
+        const timestamp = formatTimestamp(msg.timestamp);
         return `<div class="message ${cls}">
           <div class="bubble">${escapeHtml(msg.text)}</div>
-          <span class="meta">${msg.timestamp}</span>
+          <span class="meta">${escapeHtml(timestamp)}</span>
         </div>`;
       })
       .join("");
     chatWindow.scrollTop = chatWindow.scrollHeight;
+  }
+
+  function formatTimestamp(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat("es-AR", {
+      timeZone: chatTimeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(date);
   }
 
   function escapeHtml(value) {
