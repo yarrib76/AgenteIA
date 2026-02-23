@@ -198,7 +198,7 @@
         </td>
         <td data-col="programacion">
           <% if (task.scheduleEnabled) { %>
-            Activa (<%= (task.scheduleDays || []).join(",") %> <%= task.scheduleTime || "" %>)
+            Activa (<%= (task.scheduleDays || []).join(",") %> <%= task.scheduleTime || "" %> <%= task.scheduleTimezone || "America/Argentina/Buenos_Aires" %>)
           <% } else { %>
             Desactivada
           <% } %>

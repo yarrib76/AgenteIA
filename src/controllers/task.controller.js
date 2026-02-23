@@ -6,11 +6,11 @@ const filesService = require("../modules/file/files.service");
 const contactsService = require("../modules/agenda/contacts.service");
 const integrationsService = require("../modules/integration/api-integrations.service");
 
-function formatDateTime(value) {
+function formatDateTime(value, timeZone) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat("es-AR", {
+  const options = {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -18,7 +18,11 @@ function formatDateTime(value) {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  }).format(date);
+  };
+  if (timeZone) {
+    options.timeZone = timeZone;
+  }
+  return new Intl.DateTimeFormat("es-AR", options).format(date);
 }
 
 async function renderNewTaskPage(req, res) {
@@ -33,7 +37,7 @@ async function renderNewTaskPage(req, res) {
   ]);
   const tasks = rawTasks.map((task) => ({
     ...task,
-    nextRunAtFormatted: formatDateTime(task.nextRunAt),
+    nextRunAtFormatted: formatDateTime(task.nextRunAt, task.scheduleTimezone),
   }));
 
   res.render("layouts/main", {

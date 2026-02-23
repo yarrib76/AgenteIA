@@ -1361,6 +1361,9 @@ async function runScheduledTask(taskId, nowDate = new Date()) {
         : "Ejecucion programada con error",
     data: {
       nextRunAt: updated.nextRunAt,
+      timezone,
+      scheduleTime: task.scheduleTime,
+      scheduleDays: task.scheduleDays,
       error: runError,
     },
   });
