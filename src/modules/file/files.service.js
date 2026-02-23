@@ -21,6 +21,10 @@ function buildExcelHeaderName(value, index) {
   return cleaned || `col_${index + 1}`;
 }
 
+function hasTextValue(value) {
+  return String(value == null ? "" : value).trim().length > 0;
+}
+
 function sanitizeBaseName(value) {
   const cleaned = String(value || "")
     .normalize("NFKD")
@@ -181,10 +185,22 @@ async function getFileRuntimeContext(fileId) {
         if (rows.length > rowLimit) truncatedAny = true;
 
         const headerRow = Array.isArray(rows[0]) ? rows[0].slice(0, MAX_EXCEL_COLS) : [];
+        const activeColumnIndexes = [];
+        for (let i = 0; i < MAX_EXCEL_COLS; i += 1) {
+          if (hasTextValue(headerRow[i])) {
+            activeColumnIndexes.push(i);
+          }
+        }
+
+        if (activeColumnIndexes.length === 0) {
+          // Sin encabezados reales no agregamos la hoja para evitar ruido.
+          continue;
+        }
+
         const headers = [];
         const used = new Set();
-        for (let i = 0; i < MAX_EXCEL_COLS; i += 1) {
-          const headerName = buildExcelHeaderName(headerRow[i], i);
+        for (const colIndex of activeColumnIndexes) {
+          const headerName = buildExcelHeaderName(headerRow[colIndex], colIndex);
           let candidate = headerName;
           let suffix = 2;
           while (used.has(candidate)) {
@@ -201,7 +217,8 @@ async function getFileRuntimeContext(fileId) {
           const item = {};
           let hasValue = false;
           for (let c = 0; c < headers.length; c += 1) {
-            const val = String(row[c] == null ? "" : row[c]).trim();
+            const sourceCol = activeColumnIndexes[c];
+            const val = String(row[sourceCol] == null ? "" : row[sourceCol]).trim();
             item[headers[c]] = val;
             if (val) hasValue = true;
           }
@@ -216,6 +233,12 @@ async function getFileRuntimeContext(fileId) {
           truncated: rows.length > rowLimit,
           rows: items,
         });
+      }
+
+      if (jsonData.sheets.length === 0) {
+        context.note =
+          "Excel sin hojas con encabezados validos. Se envia solo metadata del archivo.";
+        return context;
       }
 
       const text = JSON.stringify(jsonData);
