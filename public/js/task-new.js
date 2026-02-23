@@ -43,6 +43,7 @@
   const tasksPageInfo = document.getElementById("tasksPageInfo");
   const tasksColumnStorageKey = "tasks_table_columns_v1";
   let currentLogTaskId = "";
+  const logsTimeZone = "America/Argentina/Buenos_Aires";
 
   if (!taskForm) return;
 
@@ -371,6 +372,22 @@
   });
 
   function renderTaskLogs(task) {
+    function formatLogDate(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return new Intl.DateTimeFormat("es-AR", {
+        timeZone: logsTimeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).format(date);
+    }
+
     const lines = [];
     lines.push(`Task ID: ${task.id}`);
     lines.push(`Estado: ${task.status}`);
@@ -384,8 +401,9 @@
       lines.push("- Sin logs registrados.");
     } else {
       logs.forEach((log, idx) => {
+        const atFormatted = formatLogDate(log.at);
         lines.push(
-          `${idx + 1}. [${log.at}] step=${log.step} status=${log.status} msg=${log.message}`
+          `${idx + 1}. [${atFormatted}] step=${log.step} status=${log.status} msg=${log.message}`
         );
         if (log.data) {
           lines.push(`   data=${JSON.stringify(log.data)}`);

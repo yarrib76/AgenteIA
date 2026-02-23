@@ -394,6 +394,13 @@ function buildWhatsAppService() {
               // fallback a alias local.
             }
           }
+          if (!isGroup && contactPhone) {
+            const senderContact = contacts.find(
+              (c) => c.type === "contact" && c.phone === contactPhone
+            );
+            authorName = senderContact ? String(senderContact.name || "") : "";
+            authorPhone = contactPhone;
+          }
           if (isGroup) {
             try {
               const chat = await message.getChat();
