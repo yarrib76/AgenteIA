@@ -31,6 +31,48 @@ function normalizeCompareText(value) {
     .trim();
 }
 
+function getZonedDateParts(timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const map = {};
+  for (const part of parts) {
+    if (part && part.type && part.type !== "literal") {
+      map[part.type] = part.value;
+    }
+  }
+  return {
+    year: map.year || "1970",
+    month: map.month || "01",
+    day: map.day || "01",
+  };
+}
+
+function buildTodayIsoAndToken(timeZone = "America/Argentina/Buenos_Aires") {
+  const parts = getZonedDateParts(timeZone);
+  const y = Number.parseInt(parts.year, 10);
+  const m = Number.parseInt(parts.month, 10);
+  const d = Number.parseInt(parts.day, 10);
+  const monthEn = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return {
+    fechaHoyIso: `${parts.year}-${parts.month}-${parts.day}`,
+    tokenFechaHoy: `${d}-${monthEn[Math.max(1, Math.min(12, m)) - 1]}`,
+    year: y,
+  };
+}
+
+function buildTodayContextText(timeZone = "America/Argentina/Buenos_Aires") {
+  const { fechaHoyIso, tokenFechaHoy } = buildTodayIsoAndToken(timeZone);
+  return [
+    `FECHA_HOY (obligatoria, no la adivines): ${fechaHoyIso}`,
+    `TZ (para interpretacion): ${timeZone}`,
+    `Token de fecha de hoy (D-MMM): ${tokenFechaHoy}`,
+  ].join("\n");
+}
+
 function normalizeScheduleDays(input) {
   const source = Array.isArray(input)
     ? input
@@ -964,6 +1006,7 @@ async function executeTask(taskId, options = {}) {
   try {
     let runtimeFileContext = "";
     let fileAttachment = null;
+    const todayContextText = buildTodayContextText("America/Argentina/Buenos_Aires");
     const availableContacts = await contactsService.listContacts();
     const availableIntegrations = await integrationsService.listIntegrations();
     const contactsReferenceText = buildContactsReferenceText(availableContacts);
@@ -1011,6 +1054,7 @@ async function executeTask(taskId, options = {}) {
 
     const modelPrompt = [
       task.mergedPrompt,
+      todayContextText,
       runtimeFileContext,
       contactsReferenceText,
       integrationsReferenceText,
@@ -1081,7 +1125,7 @@ async function executeTask(taskId, options = {}) {
 
       const followupPrompt = buildApiResultsFollowupPrompt({
         mergedPrompt: task.mergedPrompt,
-        runtimeFileContext,
+        runtimeFileContext: [todayContextText, runtimeFileContext].filter(Boolean).join("\n\n"),
         contactsReferenceText,
         integrationsReferenceText,
         apiResults,
@@ -1145,7 +1189,7 @@ async function executeTask(taskId, options = {}) {
       if (!hasWhatsAppAction) {
         const retryPrompt = buildForceWhatsAppRetryPrompt({
           mergedPrompt: task.mergedPrompt,
-          runtimeFileContext,
+          runtimeFileContext: [todayContextText, runtimeFileContext].filter(Boolean).join("\n\n"),
           contactsReferenceText,
           integrationsReferenceText,
           lastResultSummary: parsed.result_summary,
