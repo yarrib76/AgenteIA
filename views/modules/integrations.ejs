@@ -1,0 +1,110 @@
+<div class="card module-card">
+  <div class="card-header">
+    <h2 id="integrationFormTitle">Nueva integracion API</h2>
+  </div>
+
+  <form id="integrationForm" class="form-grid">
+    <input type="hidden" id="integrationId" name="integrationId" />
+    <label class="field">
+      <span>Nombre</span>
+      <input type="text" id="integrationName" name="name" required maxlength="120" />
+    </label>
+    <label class="field">
+      <span>Metodo</span>
+      <select id="integrationMethod" name="method" required>
+        <option value="GET">GET</option>
+        <option value="POST">POST</option>
+        <option value="PUT">PUT</option>
+        <option value="PATCH">PATCH</option>
+        <option value="DELETE">DELETE</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>URL</span>
+      <input
+        type="text"
+        id="integrationUrl"
+        name="url"
+        required
+        placeholder="http://api.ejemplo.com/recurso"
+      />
+    </label>
+    <label class="field">
+      <span>Headers (JSON)</span>
+      <textarea id="integrationHeaders" name="headers" rows="5" placeholder='{"x-api-key":"12345"}'></textarea>
+    </label>
+    <label class="field">
+      <span>Timeout (ms)</span>
+      <input type="number" id="integrationTimeoutMs" name="timeoutMs" min="1000" max="120000" value="15000" />
+    </label>
+    <label class="field">
+      <span>
+        <input type="checkbox" id="integrationIsActive" name="isActive" checked />
+        Activa
+      </span>
+    </label>
+    <div class="modal-actions">
+      <button id="cancelIntegrationEditBtn" class="secondary-button hidden" type="button">
+        Cancelar edicion
+      </button>
+      <button id="saveIntegrationBtn" class="primary-button" type="submit">Guardar integracion</button>
+    </div>
+  </form>
+  <p id="integrationMsg" class="note"></p>
+</div>
+
+<div class="card module-card mt-16">
+  <div class="card-header">
+    <h2>Integraciones creadas</h2>
+  </div>
+  <% if (!integrations || integrations.length === 0) { %>
+  <p class="note">No hay integraciones registradas.</p>
+  <% } else { %>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Metodo</th>
+        <th>URL</th>
+        <th>Activa</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% integrations.forEach(function(integration) { %>
+      <tr>
+        <td><%= integration.name %></td>
+        <td><%= integration.method %></td>
+        <td class="wrap-cell"><%= integration.url %></td>
+        <td><%= integration.isActive ? "Si" : "No" %></td>
+        <td>
+          <div class="inline-actions">
+            <button
+              type="button"
+              class="secondary-button edit-integration-btn"
+              data-id="<%= integration.id %>"
+              data-name="<%= integration.name %>"
+              data-method="<%= integration.method %>"
+              data-url="<%= integration.url %>"
+              data-headers="<%= JSON.stringify(integration.headers || {}) %>"
+              data-timeout-ms="<%= integration.timeoutMs %>"
+              data-is-active="<%= integration.isActive ? 'true' : 'false' %>"
+            >
+              Editar
+            </button>
+            <button
+              type="button"
+              class="secondary-button danger-button delete-integration-btn"
+              data-id="<%= integration.id %>"
+              data-name="<%= integration.name %>"
+            >
+              Eliminar
+            </button>
+          </div>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>

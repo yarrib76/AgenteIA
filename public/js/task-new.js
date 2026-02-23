@@ -4,6 +4,7 @@
   const taskAgentIdInput = document.getElementById("taskAgentId");
   const taskPromptTemplateInput = document.getElementById("taskPromptTemplate");
   const taskInputField = document.getElementById("taskInput");
+  const taskIntegrationIdInput = document.getElementById("taskIntegrationId");
   const taskScheduleEnabledInput = document.getElementById("taskScheduleEnabled");
   const taskScheduleTimeInput = document.getElementById("taskScheduleTime");
   const taskScheduleTimezoneInput = document.getElementById("taskScheduleTimezone");
@@ -93,6 +94,7 @@
       "proxima_ejecucion",
       "respuesta_a",
       "archivo",
+      "integracion",
       "acciones",
     ]);
     const ths = Array.from(tasksTable.querySelectorAll("thead th[data-col]"));
@@ -260,6 +262,7 @@
     taskAgentIdInput.value = task.agentId;
     taskPromptTemplateInput.value = task.taskPromptTemplate;
     taskInputField.value = task.taskInput;
+    taskIntegrationIdInput.value = task.integrationId || "";
     taskScheduleEnabledInput.checked = Boolean(task.scheduleEnabled);
     taskScheduleTimeInput.value = task.scheduleTime || "09:00";
     taskScheduleTimezoneInput.value =
@@ -300,6 +303,7 @@
       agentId: formData.get("agentId"),
       taskPromptTemplate: formData.get("taskPromptTemplate"),
       taskInput: formData.get("taskInput"),
+      integrationId: formData.get("integrationId"),
       scheduleEnabled: Boolean(formData.get("scheduleEnabled")),
       scheduleDays: formData.getAll("scheduleDays"),
       scheduleTime: formData.get("scheduleTime"),
@@ -457,6 +461,7 @@
         id: button.dataset.id,
         agentId: button.dataset.agentId,
         fileId: button.dataset.fileId || "",
+        integrationId: button.dataset.integrationId || "",
         responseContactId: button.dataset.responseContactId || "",
         scheduleEnabled: button.dataset.scheduleEnabled === "true",
         scheduleDays: button.dataset.scheduleDays || "",

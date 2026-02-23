@@ -6,6 +6,7 @@ const filesService = require("../file/files.service");
 const modelsService = require("../model/models.service");
 const modelTestService = require("../model/model-test.service");
 const contactsService = require("../agenda/contacts.service");
+const integrationsService = require("../integration/api-integrations.service");
 const whatsappGateway = require("../whatsapp/whatsapp.gateway");
 const messagesService = require("../chat/messages.service");
 const taskReplyRoutesService = require("./task-reply-routes.service");
@@ -22,6 +23,8 @@ function parseBool(value) {
 
 function normalizeCompareText(value) {
   return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .replace(/[.,;:!?]/g, "")
@@ -175,10 +178,12 @@ function buildActionContractPrompt() {
   return [
     "Responde SOLO en JSON valido, sin markdown.",
     "Esquema de salida:",
-    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}] }',
+    '{"result_summary":"texto", "actions":[{"type":"call_external_api","integrationId":"id_integracion","query":{},"body":{}},{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}] }',
     "Si no hay accion, enviar actions: [].",
+    "Usa call_external_api solo cuando necesites consultar APIs externas.",
     "Si la accion es send_whatsapp, el campo message debe comenzar exactamente con el detalle del rol del agente.",
     "Si hay lista de contactos disponible, prioriza devolver contactId.",
+    "Si hay lista de integraciones disponible, prioriza devolver integrationId.",
     "No inventes contactos inexistentes.",
   ].join("\n");
 }
@@ -187,12 +192,14 @@ function buildForceWhatsAppRetryPrompt({
   mergedPrompt,
   runtimeFileContext,
   contactsReferenceText,
+  integrationsReferenceText,
   lastResultSummary,
 }) {
   return [
     mergedPrompt,
     runtimeFileContext || "",
     contactsReferenceText || "",
+    integrationsReferenceText || "",
     "",
     "REINTENTO OBLIGATORIO.",
     "La tarea requiere enviar WhatsApp.",
@@ -201,6 +208,7 @@ function buildForceWhatsAppRetryPrompt({
     "No permitas actions vacio.",
     "Si result_summary ya contiene el contenido, usalo para el campo message.",
     "Si hay lista de contactos, devuelve contactId para evitar ambiguedad.",
+    "No devuelvas call_external_api en este reintento.",
     "Esquema estricto:",
     '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}]}',
     lastResultSummary
@@ -230,6 +238,40 @@ function buildContactsReferenceText(contacts) {
     "Contactos disponibles (usar contactId cuando corresponda):",
     JSON.stringify(compact),
   ].join("\n");
+}
+
+function buildIntegrationsReferenceText(integrations) {
+  const rows = Array.isArray(integrations) ? integrations : [];
+  if (rows.length === 0) return "";
+  const compact = rows.slice(0, 200).map((i) => ({
+    id: i.id,
+    name: i.name,
+    method: i.method,
+    url: i.url,
+    timeoutMs: i.timeoutMs,
+    isActive: i.isActive !== false,
+    headerKeys: Object.keys(i.headers || {}),
+  }));
+  return [
+    "Integraciones API disponibles (usar integrationId cuando corresponda):",
+    JSON.stringify(compact),
+  ].join("\n");
+}
+
+function normalizeActionObject(value) {
+  if (value == null) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    const raw = normalizeText(value);
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    } catch (error) {
+      return {};
+    }
+  }
+  return {};
 }
 
 function parseModelOutputToJson(rawOutput) {
@@ -284,12 +326,14 @@ async function listTasks() {
   const normalized = tasks.map((task) => {
     const responseContactId =
       normalizeText(task.responseContactId) || normalizeText(task.replyToContactId) || null;
+    const integrationId = normalizeText(task.integrationId) || null;
     const schedule = normalizeTaskSchedule(task);
     if (task.taskPromptTemplate || task.taskInput) {
       return {
         status: "draft",
         ...task,
         responseContactId,
+        integrationId,
         ...schedule,
       };
     }
@@ -299,6 +343,7 @@ async function listTasks() {
       taskPromptTemplate: task.taskPrompt || "",
       taskInput: "",
       responseContactId,
+      integrationId,
       ...schedule,
     };
   });
@@ -310,6 +355,7 @@ async function createTask({
   taskPromptTemplate,
   taskInput,
   fileId,
+  integrationId,
   responseContactId,
   scheduleEnabled,
   scheduleDays,
@@ -320,6 +366,7 @@ async function createTask({
   const nextTaskPromptTemplate = normalizeText(taskPromptTemplate);
   const nextTaskInput = normalizeText(taskInput);
   const nextFileId = normalizeText(fileId);
+  const nextIntegrationId = normalizeText(integrationId);
   const nextResponseContactId = normalizeText(responseContactId);
   const schedule = buildSchedulePayload({
     scheduleEnabled,
@@ -338,6 +385,10 @@ async function createTask({
 
   const role = await rolesService.getRoleById(agent.roleId);
   if (!role) throw new Error("El agente seleccionado no tiene rol valido.");
+  if (nextIntegrationId) {
+    const integration = await integrationsService.getIntegrationById(nextIntegrationId);
+    if (!integration) throw new Error("Integracion API invalida.");
+  }
 
   if (nextResponseContactId) {
     const targetContact = await contactsService.getContactById(nextResponseContactId);
@@ -365,6 +416,7 @@ async function createTask({
     taskPromptTemplate: nextTaskPromptTemplate,
     taskInput: nextTaskInput,
     fileId: nextFileId || null,
+    integrationId: nextIntegrationId || null,
     responseContactId: nextResponseContactId || null,
     scheduleEnabled: schedule.scheduleEnabled,
     scheduleDays: schedule.scheduleDays,
@@ -399,6 +451,7 @@ async function updateTask(
     taskPromptTemplate,
     taskInput,
     fileId,
+    integrationId,
     responseContactId,
     scheduleEnabled,
     scheduleDays,
@@ -410,6 +463,7 @@ async function updateTask(
   const nextTaskPromptTemplate = normalizeText(taskPromptTemplate);
   const nextTaskInput = normalizeText(taskInput);
   const nextFileId = normalizeText(fileId);
+  const nextIntegrationId = normalizeText(integrationId);
   const nextResponseContactId = normalizeText(responseContactId);
   const schedule = buildSchedulePayload({
     scheduleEnabled,
@@ -429,6 +483,10 @@ async function updateTask(
 
   const role = await rolesService.getRoleById(agent.roleId);
   if (!role) throw new Error("El agente seleccionado no tiene rol valido.");
+  if (nextIntegrationId) {
+    const integration = await integrationsService.getIntegrationById(nextIntegrationId);
+    if (!integration) throw new Error("Integracion API invalida.");
+  }
 
   if (nextResponseContactId) {
     const targetContact = await contactsService.getContactById(nextResponseContactId);
@@ -457,6 +515,7 @@ async function updateTask(
     taskPromptTemplate: nextTaskPromptTemplate,
     taskInput: nextTaskInput,
     fileId: nextFileId || null,
+    integrationId: nextIntegrationId || null,
     responseContactId: nextResponseContactId || null,
     scheduleEnabled: schedule.scheduleEnabled,
     scheduleDays: schedule.scheduleDays,
@@ -556,8 +615,192 @@ async function resolveContactFromAction(action) {
   return resolveContact(action && action.contact);
 }
 
-async function executeSendWhatsAppAction(task, action, context) {
-  const contact = await resolveContactFromAction(action);
+async function resolveIntegrationFromAction(task, action) {
+  const integrationId = normalizeText(action && action.integrationId) || normalizeText(task.integrationId);
+  const integrationName = normalizeText(action && action.integrationName);
+  if (integrationId) {
+    const byId = await integrationsService.getIntegrationById(integrationId);
+    if (byId) return byId;
+  }
+  if (integrationName) {
+    const list = await integrationsService.listIntegrations();
+    const byName = list.find(
+      (item) => String(item.name || "").trim().toLowerCase() === integrationName.toLowerCase()
+    );
+    if (byName) return byName;
+  }
+  throw new Error("No se pudo resolver la integracion API para call_external_api.");
+}
+
+async function executeExternalApiAction(task, action) {
+  const integration = await resolveIntegrationFromAction(task, action);
+  if (integration.isActive === false) {
+    throw new Error(`La integracion esta inactiva: ${integration.name}`);
+  }
+
+  const method = String(integration.method || "GET").toUpperCase();
+  const query = normalizeActionObject(action && action.query);
+  const body = normalizeActionObject(action && action.body);
+  const extraHeaders = normalizeActionObject(action && action.headers);
+
+  const urlObj = new URL(integration.url);
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || String(value) === "") continue;
+    urlObj.searchParams.set(key, String(value));
+  }
+
+  const headers = {
+    ...(integration.headers || {}),
+    ...extraHeaders,
+  };
+  let payloadBody = null;
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    payloadBody = JSON.stringify(body || {});
+    if (!headers["Content-Type"] && !headers["content-type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = Number.parseInt(String(integration.timeoutMs || 15000), 10) || 15000;
+  const timeoutHandle = setTimeout(() => controller.abort("timeout"), timeoutMs);
+  try {
+    const response = await fetch(urlObj.toString(), {
+      method,
+      headers,
+      body: payloadBody,
+      signal: controller.signal,
+    });
+    const rawText = await response.text();
+    let json = null;
+    try {
+      json = rawText ? JSON.parse(rawText) : null;
+    } catch (error) {
+      json = null;
+    }
+    if (!response.ok) {
+      const detail = json ? JSON.stringify(json) : rawText;
+      throw new Error(
+        `Error API ${integration.name} (${response.status}): ${String(detail || "sin detalle")}`
+      );
+    }
+
+    return {
+      integrationId: integration.id,
+      integrationName: integration.name,
+      method,
+      url: urlObj.toString(),
+      statusCode: response.status,
+      responseJson: json,
+      responseText: json ? null : rawText.slice(0, 20000),
+    };
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
+async function executeApiActions(task, parsed) {
+  const actions = Array.isArray(parsed.actions) ? parsed.actions : [];
+  const apiActions = actions
+    .map((action, index) => ({ action: action || {}, index }))
+    .filter((item) => normalizeText(item.action.type).toLowerCase() === "call_external_api");
+  const results = [];
+
+  for (const item of apiActions) {
+    const result = await executeExternalApiAction(task, item.action);
+    results.push({
+      index: item.index,
+      type: "call_external_api",
+      ok: true,
+      result,
+    });
+  }
+  return results;
+}
+
+function buildApiResultsFollowupPrompt({
+  mergedPrompt,
+  runtimeFileContext,
+  contactsReferenceText,
+  integrationsReferenceText,
+  apiResults,
+}) {
+  const compactResults = Array.isArray(apiResults)
+    ? apiResults.map((item) => {
+        const result = item && item.result ? item.result : {};
+        const jsonString = result.responseJson ? JSON.stringify(result.responseJson) : "";
+        const compactJson = jsonString ? toPromptPreview(jsonString, 60000) : "";
+        const compactText = result.responseText ? toPromptPreview(result.responseText, 60000) : "";
+        return {
+          integrationId: result.integrationId,
+          integrationName: result.integrationName,
+          method: result.method,
+          url: result.url,
+          statusCode: result.statusCode,
+          responseJsonSnippet: compactJson || null,
+          responseText: compactText || null,
+        };
+      })
+    : [];
+  return [
+    mergedPrompt,
+    runtimeFileContext || "",
+    contactsReferenceText || "",
+    integrationsReferenceText || "",
+    "",
+    "Resultado real de llamadas call_external_api:",
+    JSON.stringify(compactResults),
+    "",
+    "Ahora responde SOLO con acciones finales para ejecutar.",
+    "No devuelvas call_external_api nuevamente en este paso.",
+    "Esquema:",
+    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}]}',
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function extractVendorNamesFromApiResults(apiResults) {
+  const names = new Set();
+  const rows = Array.isArray(apiResults) ? apiResults : [];
+  for (const item of rows) {
+    const result = item && item.result ? item.result : {};
+    const payload = result.responseJson;
+    const dataRows = payload && Array.isArray(payload.rows) ? payload.rows : [];
+    for (const row of dataRows) {
+      const vendor =
+        normalizeText(row && (row.vendedora || row.vendedor || row.seller || row.vendor));
+      const key = normalizeCompareText(vendor);
+      if (key) names.add(key);
+    }
+  }
+  return names;
+}
+
+function buildAllowedContactIdsByVendorNames(contacts, vendorNameKeys) {
+  const allowed = new Set();
+  if (!vendorNameKeys || vendorNameKeys.size === 0) return allowed;
+  const rows = Array.isArray(contacts) ? contacts : [];
+  for (const contact of rows) {
+    if (String(contact.type || "contact") !== "contact") continue;
+    const key = normalizeCompareText(contact.name);
+    if (!key) continue;
+    if (vendorNameKeys.has(key)) {
+      allowed.add(contact.id);
+      continue;
+    }
+    for (const vendorKey of vendorNameKeys) {
+      if (key.includes(vendorKey) || vendorKey.includes(key)) {
+        allowed.add(contact.id);
+        break;
+      }
+    }
+  }
+  return allowed;
+}
+
+async function executeSendWhatsAppAction(task, action, context, resolvedContact) {
+  const contact = resolvedContact || (await resolveContactFromAction(action));
   const contactTarget = contactsService.getContactMessageTarget(contact);
   const roleDetail = normalizeText(context && context.role ? context.role.detail : "");
   const message = normalizeText(action.message);
@@ -609,13 +852,40 @@ async function executeSendWhatsAppAction(task, action, context) {
 async function executeActions(task, parsed, context) {
   const actions = Array.isArray(parsed.actions) ? parsed.actions : [];
   const results = [];
+  const policy = (context && context.actionPolicy) || null;
 
   for (let i = 0; i < actions.length; i += 1) {
     const action = actions[i] || {};
     const type = normalizeText(action.type).toLowerCase();
 
     if (type === "send_whatsapp") {
-      const result = await executeSendWhatsAppAction(task, action, context);
+      let resolvedContact = null;
+      if (policy && policy.onlyVendors === true) {
+        try {
+          resolvedContact = await resolveContactFromAction(action);
+        } catch (error) {
+          results.push({
+            index: i,
+            type,
+            ok: true,
+            skipped: true,
+            reason: `Contacto no resolvible para politica de vendedoras: ${error.message}`,
+          });
+          continue;
+        }
+        if (!policy.allowedContactIds.has(resolvedContact.id)) {
+          results.push({
+            index: i,
+            type,
+            ok: true,
+            skipped: true,
+            reason: `Contacto omitido por politica de vendedoras (${resolvedContact.name})`,
+            contactId: resolvedContact.id,
+          });
+          continue;
+        }
+      }
+      const result = await executeSendWhatsAppAction(task, action, context, resolvedContact);
       results.push({ index: i, type, result, ok: true });
       continue;
     }
@@ -695,7 +965,9 @@ async function executeTask(taskId, options = {}) {
     let runtimeFileContext = "";
     let fileAttachment = null;
     const availableContacts = await contactsService.listContacts();
+    const availableIntegrations = await integrationsService.listIntegrations();
     const contactsReferenceText = buildContactsReferenceText(availableContacts);
+    const integrationsReferenceText = buildIntegrationsReferenceText(availableIntegrations);
     if (task.fileId) {
       const fileContext = await filesService.getFileRuntimeContext(task.fileId);
       if (fileContext) {
@@ -741,6 +1013,7 @@ async function executeTask(taskId, options = {}) {
       task.mergedPrompt,
       runtimeFileContext,
       contactsReferenceText,
+      integrationsReferenceText,
       "",
       buildActionContractPrompt(),
     ]
@@ -778,6 +1051,92 @@ async function executeTask(taskId, options = {}) {
       actionsCount: Array.isArray(parsed.actions) ? parsed.actions.length : 0,
     });
 
+    const hasApiAction = Array.isArray(parsed.actions)
+      && parsed.actions.some(
+        (a) => normalizeText(a && a.type).toLowerCase() === "call_external_api"
+      );
+    let actionPolicy = null;
+    if (hasApiAction) {
+      task = appendLog(
+        task,
+        "api_actions",
+        "running",
+        "Ejecutando acciones call_external_api",
+        {
+          count: parsed.actions.filter(
+            (a) => normalizeText(a && a.type).toLowerCase() === "call_external_api"
+          ).length,
+        }
+      );
+      tasks[index] = task;
+      await tasksRepo.saveAll(tasks);
+
+      const apiResults = await executeApiActions(task, parsed);
+      task = appendLog(task, "api_actions", "ok", "Acciones API ejecutadas", {
+        count: apiResults.length,
+      });
+      for (const item of apiResults) {
+        task = appendLog(task, "api_action", "ok", "Resultado call_external_api", item.result);
+      }
+
+      const followupPrompt = buildApiResultsFollowupPrompt({
+        mergedPrompt: task.mergedPrompt,
+        runtimeFileContext,
+        contactsReferenceText,
+        integrationsReferenceText,
+        apiResults,
+      });
+      task = appendLog(task, "prompt_followup_prepared", "ok", "Prompt follow-up preparado", {
+        promptLength: followupPrompt.length,
+        promptPreview: toPromptPreview(followupPrompt),
+      });
+      task = appendLog(task, "model_call_followup", "running", "Llamando al modelo con resultados API", {
+        provider: model.provider,
+        modelId: model.modelId,
+      });
+      tasks[index] = task;
+      await tasksRepo.saveAll(tasks);
+
+      const followupOutput = await modelTestService.testModel({
+        envKey: model.envKey,
+        modelName: model.name,
+        provider: model.provider,
+        modelId: model.modelId,
+        baseUrl: model.baseUrl,
+        message: followupPrompt,
+      });
+      task = appendLog(task, "model_call_followup", "ok", "Respuesta follow-up recibida", {
+        outputLength: String(followupOutput || "").length,
+      });
+      parsed = parseModelOutputToJson(followupOutput);
+      task = appendLog(task, "parse_output_followup", "ok", "Salida follow-up parseada", {
+        keys: Object.keys(parsed || {}),
+        actionsCount: Array.isArray(parsed.actions) ? parsed.actions.length : 0,
+      });
+
+      const vendorNameKeys = extractVendorNamesFromApiResults(apiResults);
+      if (vendorNameKeys.size > 0) {
+        const allowedContactIds = buildAllowedContactIdsByVendorNames(
+          availableContacts,
+          vendorNameKeys
+        );
+        actionPolicy = {
+          onlyVendors: true,
+          allowedContactIds,
+        };
+        task = appendLog(
+          task,
+          "vendor_policy",
+          "ok",
+          "Politica de envio por vendedoras aplicada",
+          {
+            vendorNames: Array.from(vendorNameKeys),
+            allowedContactIds: Array.from(allowedContactIds),
+          }
+        );
+      }
+    }
+
     if (requiresWhatsAppAction(task)) {
       const initialActions = Array.isArray(parsed.actions) ? parsed.actions : [];
       const hasWhatsAppAction = initialActions.some(
@@ -788,6 +1147,7 @@ async function executeTask(taskId, options = {}) {
           mergedPrompt: task.mergedPrompt,
           runtimeFileContext,
           contactsReferenceText,
+          integrationsReferenceText,
           lastResultSummary: parsed.result_summary,
         });
         task = appendLog(
@@ -835,7 +1195,11 @@ async function executeTask(taskId, options = {}) {
       }
     }
 
-    const actionResults = await executeActions(task, parsed, { agent, role });
+    const actionResults = await executeActions(task, parsed, {
+      agent,
+      role,
+      actionPolicy,
+    });
     const failedActions = actionResults.filter((a) => !a.ok);
     const okActions = actionResults.filter((a) => a.ok);
 

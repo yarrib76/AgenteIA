@@ -34,6 +34,18 @@
       <textarea id="taskInput" name="taskInput" rows="6" required></textarea>
     </label>
 
+    <label class="field">
+      <span>Integracion API (opcional)</span>
+      <select id="taskIntegrationId" name="integrationId">
+        <option value="">Sin integracion</option>
+        <% integrations.forEach(function(integration) { %>
+        <option value="<%= integration.id %>">
+          <%= integration.name %> | <%= integration.method %> <%= integration.url %>
+        </option>
+        <% }) %>
+      </select>
+    </label>
+
     <div id="taskScheduleCard" class="card module-card">
       <div class="card-header">
         <h3>Programacion</h3>
@@ -167,6 +179,7 @@
         <th data-col="proxima_ejecucion">Prox. ejecucion</th>
         <th data-col="respuesta_a">Respuesta a</th>
         <th data-col="archivo">Archivo</th>
+        <th data-col="integracion">Integracion</th>
         <th data-col="plantilla">Plantilla</th>
         <th data-col="input">Input</th>
         <th data-col="acciones">Acciones</th>
@@ -195,6 +208,8 @@
         <td data-col="respuesta_a"><%= responseContact ? (responseContact.name + " (" + (responseContact.type === "group" ? (responseContact.groupId || responseContact.whatsappId || "-") : responseContact.phone) + ")") : "Sin ruteo" %></td>
         <% const file = files.find(function(f) { return f.id === task.fileId; }); %>
         <td data-col="archivo"><%= file ? file.originalName : "Sin archivo" %></td>
+        <% const integration = integrations.find(function(i) { return i.id === task.integrationId; }); %>
+        <td data-col="integracion"><%= integration ? integration.name : "Sin integracion" %></td>
         <td data-col="plantilla" class="wrap-cell"><%= task.taskPromptTemplate || task.taskPrompt || "" %></td>
         <td data-col="input" class="wrap-cell"><%= task.taskInput || "" %></td>
         <td data-col="acciones">
@@ -219,6 +234,7 @@
               data-id="<%= task.id %>"
               data-agent-id="<%= task.agentId %>"
               data-file-id="<%= task.fileId || '' %>"
+              data-integration-id="<%= task.integrationId || '' %>"
               data-response-contact-id="<%= task.responseContactId || '' %>"
               data-schedule-enabled="<%= task.scheduleEnabled ? 'true' : 'false' %>"
               data-schedule-days="<%= (task.scheduleDays || []).join(',') %>"

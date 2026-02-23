@@ -10,6 +10,17 @@ const MAX_TEXT_CHARS = 120000;
 const MAX_EXCEL_ROWS_PER_SHEET = 300;
 const MAX_EXCEL_COLS = 20;
 
+function buildExcelHeaderName(value, index) {
+  const raw = String(value == null ? "" : value).trim();
+  if (!raw) return `col_${index + 1}`;
+  const cleaned = raw
+    .normalize("NFKD")
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "_");
+  return cleaned || `col_${index + 1}`;
+}
+
 function sanitizeBaseName(value) {
   const cleaned = String(value || "")
     .normalize("NFKD")
@@ -149,7 +160,12 @@ async function getFileRuntimeContext(fileId) {
     try {
       const binary = await fs.readFile(absPath);
       const workbook = XLSX.read(binary, { type: "buffer" });
-      const chunks = [];
+      const jsonData = {
+        fileType: "excel",
+        source: file.originalName,
+        sheets: [],
+      };
+      let truncatedAny = false;
 
       for (const sheetName of workbook.SheetNames || []) {
         const sheet = workbook.Sheets[sheetName];
@@ -161,28 +177,56 @@ async function getFileRuntimeContext(fileId) {
           defval: "",
           blankrows: false,
         });
-
-        chunks.push(`[Hoja] ${sheetName}`);
         const rowLimit = Math.min(rows.length, MAX_EXCEL_ROWS_PER_SHEET);
-        for (let r = 0; r < rowLimit; r += 1) {
+        if (rows.length > rowLimit) truncatedAny = true;
+
+        const headerRow = Array.isArray(rows[0]) ? rows[0].slice(0, MAX_EXCEL_COLS) : [];
+        const headers = [];
+        const used = new Set();
+        for (let i = 0; i < MAX_EXCEL_COLS; i += 1) {
+          const headerName = buildExcelHeaderName(headerRow[i], i);
+          let candidate = headerName;
+          let suffix = 2;
+          while (used.has(candidate)) {
+            candidate = `${headerName}_${suffix}`;
+            suffix += 1;
+          }
+          used.add(candidate);
+          headers.push(candidate);
+        }
+
+        const items = [];
+        for (let r = 1; r < rowLimit; r += 1) {
           const row = Array.isArray(rows[r]) ? rows[r] : [];
-          const cols = row.slice(0, MAX_EXCEL_COLS).map((cell) => String(cell || "").trim());
-          chunks.push(cols.join(" | "));
+          const item = {};
+          let hasValue = false;
+          for (let c = 0; c < headers.length; c += 1) {
+            const val = String(row[c] == null ? "" : row[c]).trim();
+            item[headers[c]] = val;
+            if (val) hasValue = true;
+          }
+          if (hasValue) items.push(item);
         }
-        if (rows.length > rowLimit) {
-          chunks.push(
-            `[Truncado] Se omitieron ${rows.length - rowLimit} filas en hoja ${sheetName}.`
-          );
-        }
-        chunks.push("");
+
+        jsonData.sheets.push({
+          name: sheetName,
+          headers,
+          rowCountOriginal: Math.max(rows.length - 1, 0),
+          rowCountIncluded: items.length,
+          truncated: rows.length > rowLimit,
+          rows: items,
+        });
       }
 
-      const text = chunks.join("\n").trim();
+      const text = JSON.stringify(jsonData);
       context.contentText = text.slice(0, MAX_TEXT_CHARS);
       if (text.length > context.contentText.length) {
         context.note = `Excel truncado para el contexto (max ${MAX_TEXT_CHARS} caracteres).`;
+      } else if (truncatedAny) {
+        context.note =
+          "Excel convertido a JSON estructurado con truncado de filas/columnas por limites de contexto.";
       } else {
-        context.note = "Excel parseado a texto estructurado para contexto del modelo.";
+        context.note = "Excel convertido a JSON estructurado para contexto del modelo.";
       }
       return context;
     } catch (error) {

@@ -4,6 +4,7 @@ const rolesService = require("../modules/agent/roles.service");
 const modelsService = require("../modules/model/models.service");
 const filesService = require("../modules/file/files.service");
 const contactsService = require("../modules/agenda/contacts.service");
+const integrationsService = require("../modules/integration/api-integrations.service");
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -21,13 +22,14 @@ function formatDateTime(value) {
 }
 
 async function renderNewTaskPage(req, res) {
-  const [agents, roles, models, rawTasks, files, contacts] = await Promise.all([
+  const [agents, roles, models, rawTasks, files, contacts, integrations] = await Promise.all([
     agentsService.listAgents(),
     rolesService.listRoles(),
     modelsService.listModels(),
     tasksService.listTasks(),
     filesService.listFiles(),
     contactsService.listContacts(),
+    integrationsService.listIntegrations(),
   ]);
   const tasks = rawTasks.map((task) => ({
     ...task,
@@ -46,6 +48,7 @@ async function renderNewTaskPage(req, res) {
       tasks,
       files,
       contacts,
+      integrations,
     },
     pageScripts: ["/js/task-new.js"],
   });

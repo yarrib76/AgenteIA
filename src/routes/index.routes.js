@@ -6,6 +6,7 @@ const agentController = require("../controllers/agent.controller");
 const modelController = require("../controllers/model.controller");
 const taskController = require("../controllers/task.controller");
 const fileController = require("../controllers/file.controller");
+const integrationController = require("../controllers/integration.controller");
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ router.get("/chat", chatController.renderChatPage);
 router.get("/agente/nuevo", agentController.renderNewAgentPage);
 router.get("/agente/roles", agentController.renderRolesPage);
 router.get("/modelos", modelController.renderModelsPage);
+router.get("/integraciones", integrationController.renderIntegrationsPage);
 router.get("/tareas/nueva", taskController.renderNewTaskPage);
 router.get("/archivos/gestionar", fileController.renderManageFilesPage);
 
@@ -43,6 +45,10 @@ router.post("/api/models", modelController.createModel);
 router.put("/api/models/:modelId", modelController.updateModel);
 router.delete("/api/models/:modelId", modelController.deleteModel);
 router.post("/api/models/:modelId/test", modelController.testModel);
+router.get("/api/integrations", integrationController.listIntegrations);
+router.post("/api/integrations", integrationController.createIntegration);
+router.put("/api/integrations/:integrationId", integrationController.updateIntegration);
+router.delete("/api/integrations/:integrationId", integrationController.deleteIntegration);
 router.post("/api/tasks", taskController.createTask);
 router.get("/api/tasks/:taskId/prompt", taskController.getTaskPrompt);
 router.get("/api/tasks/:taskId", taskController.getTaskDetails);
