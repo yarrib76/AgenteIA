@@ -847,12 +847,15 @@ async function executeSendWhatsAppAction(task, action, context, resolvedContact)
   const roleDetail = normalizeText(context && context.role ? context.role.detail : "");
   const message = normalizeText(action.message);
   if (!message) throw new Error("Accion send_whatsapp sin mensaje.");
+  const withTraceTag = parseBool(process.env.TASK_REPLY_APPEND_TID || "false");
+  const tidTag = task && task.id ? `[TID:${String(task.id).slice(0, 8)}]` : "";
+  const finalMessage = withTraceTag && tidTag ? `${message}\n\n${tidTag}` : message;
 
-  await whatsappGateway.sendMessage(contactTarget, message);
+  const sendResult = await whatsappGateway.sendMessage(contactTarget, finalMessage);
   await messagesService.addMessage({
     contactPhone: contactTarget,
     direction: "out",
-    text: message,
+    text: finalMessage,
     status: "sent",
   });
 
@@ -866,7 +869,9 @@ async function executeSendWhatsAppAction(task, action, context, resolvedContact)
         sourcePhone: contactTarget,
         destinationContactId: destination.id,
         destinationPhone: destinationTarget,
-        originalMessage: message,
+        originalMessage: finalMessage,
+        lastOutboundMessageId: String(sendResult && sendResult.messageId ? sendResult.messageId : ""),
+        lastOutboundAt: new Date().toISOString(),
       });
     }
   }
@@ -875,13 +880,15 @@ async function executeSendWhatsAppAction(task, action, context, resolvedContact)
     contactId: contact.id,
     contactName: contact.name,
     phone: contactTarget,
-    finalMessage: message,
+    finalMessage,
     sent: true,
+    outboundMessageId: sendResult && sendResult.messageId ? sendResult.messageId : null,
+    traceTagEnabled: withTraceTag,
     roleDetailPrepended: false,
     roleDetailExpected: roleDetail || null,
     modelMessageStartsWithRoleDetail:
       Boolean(roleDetail) &&
-      normalizeCompareText(message).startsWith(normalizeCompareText(roleDetail)),
+      normalizeCompareText(finalMessage).startsWith(normalizeCompareText(roleDetail)),
     replyRoute: replyRoute
       ? {
           routeId: replyRoute.id,

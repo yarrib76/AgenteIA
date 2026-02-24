@@ -91,6 +91,29 @@ function buildWhatsAppService() {
     return normalizePhone(raw.split("@")[0]);
   }
 
+  function extractMessageId(message) {
+    if (!message) return "";
+    const bySerialized = message.id && message.id._serialized ? String(message.id._serialized) : "";
+    if (bySerialized) return bySerialized;
+    if (message._data && message._data.id && message._data.id.id) {
+      return String(message._data.id.id);
+    }
+    return "";
+  }
+
+  async function extractQuotedMessageId(message) {
+    if (!message) return "";
+    const direct = String(message.quotedMsgId || message.quotedStanzaID || "").trim();
+    if (direct) return direct;
+    if (!message.hasQuotedMsg || typeof message.getQuotedMessage !== "function") return "";
+    try {
+      const quoted = await message.getQuotedMessage();
+      return extractMessageId(quoted);
+    } catch (error) {
+      return "";
+    }
+  }
+
   async function resolveContactKeysInternal(phone) {
     const raw = String(phone || "").trim();
     if (raw.endsWith("@g.us")) return [raw];
@@ -141,10 +164,11 @@ function buildWhatsAppService() {
 
     const rawTarget = String(phone || "").trim();
     if (rawTarget.endsWith("@g.us")) {
-      await client.sendMessage(rawTarget, text);
+      const sent = await client.sendMessage(rawTarget, text);
       return {
         chatId: rawTarget,
         contactKey: rawTarget,
+        messageId: extractMessageId(sent),
       };
     }
 
@@ -171,7 +195,7 @@ function buildWhatsAppService() {
       // Fallback a c.us armado manualmente.
     }
 
-    await client.sendMessage(chatId, text);
+    const sent = await client.sendMessage(chatId, text);
     await contactAliasesService.addAliases(normalizePhone(phone), [
       toContactKeyFromChatId(chatId),
       normalizePhone(phone),
@@ -179,29 +203,32 @@ function buildWhatsAppService() {
     return {
       chatId,
       contactKey: toContactKeyFromChatId(chatId) || normalizePhone(phone),
+      messageId: extractMessageId(sent),
     };
   }
 
   async function routeTaskReplyIfNeeded({
     sourcePhone,
     text,
+    quotedMessageId = "",
     isGroup = false,
     groupName = "",
     authorName = "",
     authorPhone = "",
   }) {
-    const routes = await taskReplyRoutesService.findActiveRoutesBySourcePhone(sourcePhone);
+    const routeWindowHours = Number.parseInt(
+      String(process.env.TASK_REPLY_ROUTE_WINDOW_HOURS || "168"),
+      10
+    );
+    const selection = await taskReplyRoutesService.findRoutesForIncoming({
+      sourcePhone,
+      quotedMessageId,
+      maxAgeHours: routeWindowHours,
+    });
+    const routes = selection && Array.isArray(selection.routes) ? selection.routes : [];
     if (!routes || routes.length === 0) return;
 
-    const dedup = new Map();
     for (const route of routes) {
-      if (!route.destinationPhone) continue;
-      if (!dedup.has(route.destinationPhone)) {
-        dedup.set(route.destinationPhone, route);
-      }
-    }
-
-    for (const route of dedup.values()) {
       try {
         const headerLine = isGroup
           ? `[Grupo: ${String(groupName || sourcePhone)}] [Autor: ${String(
@@ -443,6 +470,7 @@ function buildWhatsAppService() {
           await routeTaskReplyIfNeeded({
             sourcePhone: contactPhone,
             text,
+            quotedMessageId: await extractQuotedMessageId(message),
             isGroup,
             groupName,
             authorName,

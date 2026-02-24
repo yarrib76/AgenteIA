@@ -30,8 +30,25 @@ Este archivo documenta los contratos de persistencia para permitir cambiar de JS
 - `list(): Promise<TaskRow[]>`
 - `saveAll(tasks: TaskRow[]): Promise<void>`
 
+## TaskReplyRoutesRepository
+- `list(): Promise<TaskReplyRouteRow[]>`
+- `saveAll(rows: TaskReplyRouteRow[]): Promise<void>`
+
 ## FilesRepository
 - `list(): Promise<FileRow[]>`
 - `saveAll(files: FileRow[]): Promise<void>`
 
 `Row` representa registro plano listo para mapear a tabla SQL.
+
+## Campos sugeridos para TaskReplyRouteRow
+- `id` (PK)
+- `taskId` (FK a tarea)
+- `sourcePhone` (origen que debe responder)
+- `destinationContactId` (FK agenda)
+- `destinationPhone` (destino de ruteo)
+- `originalMessage` (ultimo mensaje enviado por la tarea)
+- `lastOutboundMessageId` (ID de WhatsApp del ultimo mensaje saliente)
+- `lastOutboundAt` (timestamp del ultimo mensaje saliente)
+- `enabled` (boolean)
+- `createdAt`
+- `updatedAt`
