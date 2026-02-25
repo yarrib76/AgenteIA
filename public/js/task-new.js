@@ -14,6 +14,7 @@
   const taskScheduleToggleBtn = document.getElementById("taskScheduleToggleBtn");
   const taskScheduleBody = document.getElementById("taskScheduleBody");
   const taskResponseContactIdInput = document.getElementById("taskResponseContactId");
+  const taskAllowedGroupContactIdsInput = document.getElementById("taskAllowedGroupContactIds");
   const taskFileIdInput = document.getElementById("taskFileId");
   const taskUploadFileInput = document.getElementById("taskUploadFileInput");
   const uploadTaskFileBtn = document.getElementById("uploadTaskFileBtn");
@@ -255,6 +256,11 @@
     taskScheduleDayInputs.forEach((checkbox) => {
       checkbox.checked = false;
     });
+    if (taskAllowedGroupContactIdsInput) {
+      Array.from(taskAllowedGroupContactIdsInput.options || []).forEach((opt) => {
+        opt.selected = false;
+      });
+    }
     setScheduleFieldsState();
   }
 
@@ -278,6 +284,17 @@
       checkbox.checked = selectedDays.has(String(checkbox.value));
     });
     taskResponseContactIdInput.value = task.responseContactId || "";
+    if (taskAllowedGroupContactIdsInput) {
+      const selectedGroupIds = new Set(
+        String(task.allowedGroupContactIds || "")
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean)
+      );
+      Array.from(taskAllowedGroupContactIdsInput.options || []).forEach((opt) => {
+        opt.selected = selectedGroupIds.has(String(opt.value || "").trim());
+      });
+    }
     taskFileIdInput.value = task.fileId || "";
     setScheduleFieldsState();
     taskFormTitle.textContent = "Editar tarea";
@@ -310,6 +327,7 @@
       scheduleTime: formData.get("scheduleTime"),
       scheduleTimezone: formData.get("scheduleTimezone"),
       responseContactId: formData.get("responseContactId"),
+      allowedGroupContactIds: formData.getAll("allowedGroupContactIds"),
       fileId: formData.get("fileId"),
     };
 
@@ -481,6 +499,7 @@
         fileId: button.dataset.fileId || "",
         integrationId: button.dataset.integrationId || "",
         responseContactId: button.dataset.responseContactId || "",
+        allowedGroupContactIds: button.dataset.allowedGroupContactIds || "",
         scheduleEnabled: button.dataset.scheduleEnabled === "true",
         scheduleDays: button.dataset.scheduleDays || "",
         scheduleTime: button.dataset.scheduleTime || "09:00",

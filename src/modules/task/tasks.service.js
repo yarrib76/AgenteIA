@@ -21,6 +21,16 @@ function parseBool(value) {
   return normalized === "true" || normalized === "1" || normalized === "on";
 }
 
+function normalizeIdList(input) {
+  const source = Array.isArray(input)
+    ? input
+    : typeof input === "string"
+      ? input.split(",")
+      : [];
+  const values = source.map((item) => normalizeText(item)).filter(Boolean);
+  return Array.from(new Set(values));
+}
+
 function normalizeCompareText(value) {
   return normalizeText(value)
     .normalize("NFD")
@@ -369,6 +379,7 @@ async function listTasks() {
     const responseContactId =
       normalizeText(task.responseContactId) || normalizeText(task.replyToContactId) || null;
     const integrationId = normalizeText(task.integrationId) || null;
+    const allowedGroupContactIds = normalizeIdList(task.allowedGroupContactIds);
     const schedule = normalizeTaskSchedule(task);
     if (task.taskPromptTemplate || task.taskInput) {
       return {
@@ -376,6 +387,7 @@ async function listTasks() {
         ...task,
         responseContactId,
         integrationId,
+        allowedGroupContactIds,
         ...schedule,
       };
     }
@@ -386,6 +398,7 @@ async function listTasks() {
       taskInput: "",
       responseContactId,
       integrationId,
+      allowedGroupContactIds,
       ...schedule,
     };
   });
@@ -399,6 +412,7 @@ async function createTask({
   fileId,
   integrationId,
   responseContactId,
+  allowedGroupContactIds,
   scheduleEnabled,
   scheduleDays,
   scheduleTime,
@@ -410,6 +424,7 @@ async function createTask({
   const nextFileId = normalizeText(fileId);
   const nextIntegrationId = normalizeText(integrationId);
   const nextResponseContactId = normalizeText(responseContactId);
+  const nextAllowedGroupContactIds = normalizeIdList(allowedGroupContactIds);
   const schedule = buildSchedulePayload({
     scheduleEnabled,
     scheduleDays,
@@ -438,6 +453,15 @@ async function createTask({
       throw new Error("Contacto destino de respuesta invalido.");
     }
   }
+  if (nextAllowedGroupContactIds.length > 0) {
+    const allContacts = await contactsService.listContacts();
+    for (const contactId of nextAllowedGroupContactIds) {
+      const group = allContacts.find((c) => c.id === contactId);
+      if (!group || String(group.type || "contact") !== "group") {
+        throw new Error("La lista de grupos permitidos contiene un grupo invalido.");
+      }
+    }
+  }
 
   let fileContext = "";
   if (nextFileId) {
@@ -460,6 +484,7 @@ async function createTask({
     fileId: nextFileId || null,
     integrationId: nextIntegrationId || null,
     responseContactId: nextResponseContactId || null,
+    allowedGroupContactIds: nextAllowedGroupContactIds,
     scheduleEnabled: schedule.scheduleEnabled,
     scheduleDays: schedule.scheduleDays,
     scheduleTime: schedule.scheduleTime,
@@ -495,6 +520,7 @@ async function updateTask(
     fileId,
     integrationId,
     responseContactId,
+    allowedGroupContactIds,
     scheduleEnabled,
     scheduleDays,
     scheduleTime,
@@ -507,6 +533,7 @@ async function updateTask(
   const nextFileId = normalizeText(fileId);
   const nextIntegrationId = normalizeText(integrationId);
   const nextResponseContactId = normalizeText(responseContactId);
+  const nextAllowedGroupContactIds = normalizeIdList(allowedGroupContactIds);
   const schedule = buildSchedulePayload({
     scheduleEnabled,
     scheduleDays,
@@ -536,6 +563,15 @@ async function updateTask(
       throw new Error("Contacto destino de respuesta invalido.");
     }
   }
+  if (nextAllowedGroupContactIds.length > 0) {
+    const allContacts = await contactsService.listContacts();
+    for (const contactId of nextAllowedGroupContactIds) {
+      const group = allContacts.find((c) => c.id === contactId);
+      if (!group || String(group.type || "contact") !== "group") {
+        throw new Error("La lista de grupos permitidos contiene un grupo invalido.");
+      }
+    }
+  }
 
   let fileContext = "";
   if (nextFileId) {
@@ -559,6 +595,7 @@ async function updateTask(
     fileId: nextFileId || null,
     integrationId: nextIntegrationId || null,
     responseContactId: nextResponseContactId || null,
+    allowedGroupContactIds: nextAllowedGroupContactIds,
     scheduleEnabled: schedule.scheduleEnabled,
     scheduleDays: schedule.scheduleDays,
     scheduleTime: schedule.scheduleTime,
@@ -923,7 +960,21 @@ async function executeActions(task, parsed, context) {
           });
           continue;
         }
-        if (!policy.allowedContactIds.has(resolvedContact.id)) {
+        const isGroup = String(resolvedContact.type || "contact") === "group";
+        if (isGroup) {
+          const allowedGroups = policy.allowedGroupContactIds || new Set();
+          if (!allowedGroups.has(resolvedContact.id)) {
+            results.push({
+              index: i,
+              type,
+              ok: true,
+              skipped: true,
+              reason: `Grupo omitido por politica de grupos permitidos (${resolvedContact.name})`,
+              contactId: resolvedContact.id,
+            });
+            continue;
+          }
+        } else if (!policy.allowedVendorContactIds.has(resolvedContact.id)) {
           results.push({
             index: i,
             type,
@@ -1168,13 +1219,15 @@ async function executeTask(taskId, options = {}) {
 
       const vendorNameKeys = extractVendorNamesFromApiResults(apiResults);
       if (vendorNameKeys.size > 0) {
-        const allowedContactIds = buildAllowedContactIdsByVendorNames(
+        const allowedVendorContactIds = buildAllowedContactIdsByVendorNames(
           availableContacts,
           vendorNameKeys
         );
+        const allowedGroupContactIds = new Set(normalizeIdList(task.allowedGroupContactIds));
         actionPolicy = {
           onlyVendors: true,
-          allowedContactIds,
+          allowedVendorContactIds,
+          allowedGroupContactIds,
         };
         task = appendLog(
           task,
@@ -1183,7 +1236,8 @@ async function executeTask(taskId, options = {}) {
           "Politica de envio por vendedoras aplicada",
           {
             vendorNames: Array.from(vendorNameKeys),
-            allowedContactIds: Array.from(allowedContactIds),
+            allowedVendorContactIds: Array.from(allowedVendorContactIds),
+            allowedGroupContactIds: Array.from(allowedGroupContactIds),
           }
         );
       }

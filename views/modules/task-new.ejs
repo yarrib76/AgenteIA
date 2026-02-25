@@ -108,6 +108,16 @@
           <% }) %>
         </select>
       </label>
+      <label class="field role-field">
+        <span>Grupos permitidos (para politica API)</span>
+        <select id="taskAllowedGroupContactIds" name="allowedGroupContactIds" multiple size="4">
+          <% contacts.filter(function(contact) { return contact.type === "group"; }).forEach(function(contact) { %>
+          <option value="<%= contact.id %>">
+            <%= contact.name %> (<%= contact.groupId || contact.whatsappId || "-" %>)
+          </option>
+          <% }) %>
+        </select>
+      </label>
     </div>
 
     <div class="role-row">
@@ -236,6 +246,7 @@
               data-file-id="<%= task.fileId || '' %>"
               data-integration-id="<%= task.integrationId || '' %>"
               data-response-contact-id="<%= task.responseContactId || '' %>"
+              data-allowed-group-contact-ids="<%= (task.allowedGroupContactIds || []).join(',') %>"
               data-schedule-enabled="<%= task.scheduleEnabled ? 'true' : 'false' %>"
               data-schedule-days="<%= (task.scheduleDays || []).join(',') %>"
               data-schedule-time="<%= task.scheduleTime || '' %>"
