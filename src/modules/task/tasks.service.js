@@ -624,6 +624,9 @@ async function updateTask(
   };
 
   await tasksRepo.saveAll(tasks);
+  if (!nextResponseContactId) {
+    await taskReplyRoutesService.disableRoutesByTaskId(taskId);
+  }
   return tasks[index];
 }
 

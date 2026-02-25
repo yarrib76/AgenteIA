@@ -132,6 +132,27 @@ async function findActiveRoutesBySourcePhone(sourcePhone) {
   return rows.filter((row) => row.enabled && row.sourcePhone === key);
 }
 
+async function disableRoutesByTaskId(taskId) {
+  const targetTaskId = String(taskId || "").trim();
+  if (!targetTaskId) return 0;
+  const rows = await listRoutes();
+  const now = new Date().toISOString();
+  let changed = 0;
+  const updated = rows.map((row) => {
+    if (row.taskId !== targetTaskId || row.enabled !== true) return row;
+    changed += 1;
+    return {
+      ...row,
+      enabled: false,
+      updatedAt: now,
+    };
+  });
+  if (changed > 0) {
+    await saveAll(updated);
+  }
+  return changed;
+}
+
 function dedupByDestinationLatest(rows) {
   const dedup = new Map();
   for (const row of rows || []) {
@@ -187,4 +208,5 @@ module.exports = {
   upsertRouteForTask,
   findActiveRoutesBySourcePhone,
   findRoutesForIncoming,
+  disableRoutesByTaskId,
 };
