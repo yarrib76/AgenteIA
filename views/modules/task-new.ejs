@@ -98,6 +98,13 @@
 
     <div class="role-row">
       <label class="field role-field">
+        <span>Modo ruteo respuesta</span>
+        <select id="taskReplyRoutingMode" name="replyRoutingMode">
+          <option value="none">Sin ruteo automatico</option>
+          <option value="contact">Rutear a contacto</option>
+        </select>
+      </label>
+      <label class="field role-field">
         <span>Contacto destino de respuesta</span>
         <select id="taskResponseContactId" name="responseContactId">
           <option value="">Sin ruteo automatico</option>
@@ -250,6 +257,7 @@
               data-file-id="<%= task.fileId || '' %>"
               data-integration-id="<%= task.integrationId || '' %>"
               data-response-contact-id="<%= task.responseContactId || '' %>"
+              data-reply-routing-mode="<%= task.replyRoutingMode || ((task.responseContactId && 'contact') || 'none') %>"
               data-allowed-group-contact-ids="<%= (task.allowedGroupContactIds || []).join(',') %>"
               data-schedule-enabled="<%= task.scheduleEnabled ? 'true' : 'false' %>"
               data-schedule-days="<%= (task.scheduleDays || []).join(',') %>"

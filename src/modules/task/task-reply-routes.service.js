@@ -185,6 +185,9 @@ async function findRoutesForIncoming({
         strategy: "quoted_message_id",
       };
     }
+    // Si el usuario respondio a un mensaje puntual, no aplicar fallback por recencia:
+    // evita mezclar con rutas antiguas de otras tareas.
+    return { routes: [], strategy: "quoted_no_match" };
   }
 
   const hours = Number.parseInt(String(maxAgeHours), 10);

@@ -31,6 +31,13 @@ function normalizeIdList(input) {
   return Array.from(new Set(values));
 }
 
+function normalizeReplyRoutingMode(value, fallbackResponseContactId = "") {
+  const mode = normalizeText(value).toLowerCase();
+  if (mode === "contact") return "contact";
+  if (mode === "none") return "none";
+  return normalizeText(fallbackResponseContactId) ? "contact" : "none";
+}
+
 function normalizeCompareText(value) {
   return normalizeText(value)
     .normalize("NFD")
@@ -378,6 +385,7 @@ async function listTasks() {
   const normalized = tasks.map((task) => {
     const responseContactId =
       normalizeText(task.responseContactId) || normalizeText(task.replyToContactId) || null;
+    const replyRoutingMode = normalizeReplyRoutingMode(task.replyRoutingMode, responseContactId);
     const integrationId = normalizeText(task.integrationId) || null;
     const allowedGroupContactIds = normalizeIdList(task.allowedGroupContactIds);
     const schedule = normalizeTaskSchedule(task);
@@ -386,6 +394,7 @@ async function listTasks() {
         status: "draft",
         ...task,
         responseContactId,
+        replyRoutingMode,
         integrationId,
         allowedGroupContactIds,
         ...schedule,
@@ -397,6 +406,7 @@ async function listTasks() {
       taskPromptTemplate: task.taskPrompt || "",
       taskInput: "",
       responseContactId,
+      replyRoutingMode,
       integrationId,
       allowedGroupContactIds,
       ...schedule,
@@ -412,6 +422,7 @@ async function createTask({
   fileId,
   integrationId,
   responseContactId,
+  replyRoutingMode,
   allowedGroupContactIds,
   scheduleEnabled,
   scheduleDays,
@@ -424,6 +435,7 @@ async function createTask({
   const nextFileId = normalizeText(fileId);
   const nextIntegrationId = normalizeText(integrationId);
   const nextResponseContactId = normalizeText(responseContactId);
+  const nextReplyRoutingMode = normalizeReplyRoutingMode(replyRoutingMode, nextResponseContactId);
   const nextAllowedGroupContactIds = normalizeIdList(allowedGroupContactIds);
   const schedule = buildSchedulePayload({
     scheduleEnabled,
@@ -447,7 +459,10 @@ async function createTask({
     if (!integration) throw new Error("Integracion API invalida.");
   }
 
-  if (nextResponseContactId) {
+  if (nextReplyRoutingMode === "contact") {
+    if (!nextResponseContactId) {
+      throw new Error("Debes seleccionar un contacto destino de respuesta o usar Sin ruteo.");
+    }
     const targetContact = await contactsService.getContactById(nextResponseContactId);
     if (!targetContact) {
       throw new Error("Contacto destino de respuesta invalido.");
@@ -483,7 +498,8 @@ async function createTask({
     taskInput: nextTaskInput,
     fileId: nextFileId || null,
     integrationId: nextIntegrationId || null,
-    responseContactId: nextResponseContactId || null,
+    responseContactId: nextReplyRoutingMode === "contact" ? nextResponseContactId : null,
+    replyRoutingMode: nextReplyRoutingMode,
     allowedGroupContactIds: nextAllowedGroupContactIds,
     scheduleEnabled: schedule.scheduleEnabled,
     scheduleDays: schedule.scheduleDays,
@@ -520,6 +536,7 @@ async function updateTask(
     fileId,
     integrationId,
     responseContactId,
+    replyRoutingMode,
     allowedGroupContactIds,
     scheduleEnabled,
     scheduleDays,
@@ -533,6 +550,7 @@ async function updateTask(
   const nextFileId = normalizeText(fileId);
   const nextIntegrationId = normalizeText(integrationId);
   const nextResponseContactId = normalizeText(responseContactId);
+  const nextReplyRoutingMode = normalizeReplyRoutingMode(replyRoutingMode, nextResponseContactId);
   const nextAllowedGroupContactIds = normalizeIdList(allowedGroupContactIds);
   const schedule = buildSchedulePayload({
     scheduleEnabled,
@@ -557,7 +575,10 @@ async function updateTask(
     if (!integration) throw new Error("Integracion API invalida.");
   }
 
-  if (nextResponseContactId) {
+  if (nextReplyRoutingMode === "contact") {
+    if (!nextResponseContactId) {
+      throw new Error("Debes seleccionar un contacto destino de respuesta o usar Sin ruteo.");
+    }
     const targetContact = await contactsService.getContactById(nextResponseContactId);
     if (!targetContact) {
       throw new Error("Contacto destino de respuesta invalido.");
@@ -594,7 +615,8 @@ async function updateTask(
     taskInput: nextTaskInput,
     fileId: nextFileId || null,
     integrationId: nextIntegrationId || null,
-    responseContactId: nextResponseContactId || null,
+    responseContactId: nextReplyRoutingMode === "contact" ? nextResponseContactId : null,
+    replyRoutingMode: nextReplyRoutingMode,
     allowedGroupContactIds: nextAllowedGroupContactIds,
     scheduleEnabled: schedule.scheduleEnabled,
     scheduleDays: schedule.scheduleDays,
@@ -624,7 +646,7 @@ async function updateTask(
   };
 
   await tasksRepo.saveAll(tasks);
-  if (!nextResponseContactId) {
+  if (nextReplyRoutingMode === "none") {
     await taskReplyRoutesService.disableRoutesByTaskId(taskId);
   }
   return tasks[index];
@@ -900,20 +922,24 @@ async function executeSendWhatsAppAction(task, action, context, resolvedContact)
   });
 
   let replyRoute = null;
-  if (task && task.responseContactId) {
-    const destination = await contactsService.getContactById(task.responseContactId);
-    if (destination) {
-      const destinationTarget = contactsService.getContactMessageTarget(destination);
-      replyRoute = await taskReplyRoutesService.upsertRouteForTask({
-        taskId: task.id,
-        sourcePhone: contactTarget,
-        destinationContactId: destination.id,
-        destinationPhone: destinationTarget,
-        originalMessage: finalMessage,
-        lastOutboundMessageId: String(sendResult && sendResult.messageId ? sendResult.messageId : ""),
-        lastOutboundAt: new Date().toISOString(),
-      });
+  if (task && task.replyRoutingMode === "contact") {
+    if (!task.responseContactId) {
+      throw new Error("La tarea tiene ruteo a contacto pero no tiene responseContactId.");
     }
+    const destination = await contactsService.getContactById(task.responseContactId);
+    if (!destination) {
+      throw new Error("No se pudo resolver el contacto destino de respuesta.");
+    }
+    const destinationTarget = contactsService.getContactMessageTarget(destination);
+    replyRoute = await taskReplyRoutesService.upsertRouteForTask({
+      taskId: task.id,
+      sourcePhone: contactTarget,
+      destinationContactId: destination.id,
+      destinationPhone: destinationTarget,
+      originalMessage: finalMessage,
+      lastOutboundMessageId: String(sendResult && sendResult.messageId ? sendResult.messageId : ""),
+      lastOutboundAt: new Date().toISOString(),
+    });
   }
 
   return {
