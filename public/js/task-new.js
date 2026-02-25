@@ -13,7 +13,6 @@
   );
   const taskScheduleToggleBtn = document.getElementById("taskScheduleToggleBtn");
   const taskScheduleBody = document.getElementById("taskScheduleBody");
-  const taskReplyRoutingModeInput = document.getElementById("taskReplyRoutingMode");
   const taskResponseContactIdInput = document.getElementById("taskResponseContactId");
   const taskAllowedGroupContactIdsInput = document.getElementById("taskAllowedGroupContactIds");
   const taskAllowedGroupsPreview = document.getElementById("taskAllowedGroupsPreview");
@@ -57,16 +56,6 @@
     });
     if (taskScheduleTimeInput) taskScheduleTimeInput.disabled = !enabled;
     if (taskScheduleTimezoneInput) taskScheduleTimezoneInput.disabled = !enabled;
-  }
-
-  function setReplyRoutingFieldsState() {
-    if (!taskReplyRoutingModeInput || !taskResponseContactIdInput) return;
-    const mode = String(taskReplyRoutingModeInput.value || "none").toLowerCase();
-    const isContact = mode === "contact";
-    taskResponseContactIdInput.disabled = !isContact;
-    if (!isContact) {
-      taskResponseContactIdInput.value = "";
-    }
   }
 
   function refreshAllowedGroupsPreview() {
@@ -288,9 +277,6 @@
     if (taskScheduleEnabledInput) {
       taskScheduleEnabledInput.checked = false;
     }
-    if (taskReplyRoutingModeInput) {
-      taskReplyRoutingModeInput.value = "none";
-    }
     if (taskResponseContactIdInput) {
       taskResponseContactIdInput.value = "";
     }
@@ -317,9 +303,6 @@
     taskScheduleTimeInput.value = task.scheduleTime || "09:00";
     taskScheduleTimezoneInput.value =
       task.scheduleTimezone || "America/Argentina/Buenos_Aires";
-    if (taskReplyRoutingModeInput) {
-      taskReplyRoutingModeInput.value = task.replyRoutingMode || "none";
-    }
     const selectedDays = new Set(
       String(task.scheduleDays || "")
         .split(",")
@@ -344,7 +327,6 @@
     refreshAllowedGroupsPreview();
     taskFileIdInput.value = task.fileId || "";
     setScheduleFieldsState();
-    setReplyRoutingFieldsState();
     taskFormTitle.textContent = "Editar tarea";
     saveTaskBtn.textContent = "Guardar cambios";
     cancelTaskEditBtn.classList.remove("hidden");
@@ -357,9 +339,6 @@
     taskScheduleEnabledInput.addEventListener("change", () => {
       setScheduleFieldsState();
     });
-  }
-  if (taskReplyRoutingModeInput) {
-    taskReplyRoutingModeInput.addEventListener("change", setReplyRoutingFieldsState);
   }
   if (taskAllowedGroupContactIdsInput) {
     enableSimpleMultiToggle(taskAllowedGroupContactIdsInput);
@@ -381,7 +360,6 @@
       scheduleDays: formData.getAll("scheduleDays"),
       scheduleTime: formData.get("scheduleTime"),
       scheduleTimezone: formData.get("scheduleTimezone"),
-      replyRoutingMode: formData.get("replyRoutingMode"),
       responseContactId: formData.get("responseContactId"),
       allowedGroupContactIds: formData.getAll("allowedGroupContactIds"),
       fileId: formData.get("fileId"),
@@ -554,7 +532,6 @@
         agentId: button.dataset.agentId,
         fileId: button.dataset.fileId || "",
         integrationId: button.dataset.integrationId || "",
-        replyRoutingMode: button.dataset.replyRoutingMode || "none",
         responseContactId: button.dataset.responseContactId || "",
         allowedGroupContactIds: button.dataset.allowedGroupContactIds || "",
         scheduleEnabled: button.dataset.scheduleEnabled === "true",
@@ -692,7 +669,6 @@
 
   initSchedulePanel();
   setScheduleFieldsState();
-  setReplyRoutingFieldsState();
   refreshAllowedGroupsPreview();
   initTasksDataTable();
 })();
