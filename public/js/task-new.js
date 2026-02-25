@@ -15,6 +15,7 @@
   const taskScheduleBody = document.getElementById("taskScheduleBody");
   const taskResponseContactIdInput = document.getElementById("taskResponseContactId");
   const taskAllowedGroupContactIdsInput = document.getElementById("taskAllowedGroupContactIds");
+  const taskAllowedGroupsPreview = document.getElementById("taskAllowedGroupsPreview");
   const taskFileIdInput = document.getElementById("taskFileId");
   const taskUploadFileInput = document.getElementById("taskUploadFileInput");
   const uploadTaskFileBtn = document.getElementById("uploadTaskFileBtn");
@@ -55,6 +56,17 @@
     });
     if (taskScheduleTimeInput) taskScheduleTimeInput.disabled = !enabled;
     if (taskScheduleTimezoneInput) taskScheduleTimezoneInput.disabled = !enabled;
+  }
+
+  function refreshAllowedGroupsPreview() {
+    if (!taskAllowedGroupsPreview || !taskAllowedGroupContactIdsInput) return;
+    const selected = Array.from(taskAllowedGroupContactIdsInput.selectedOptions || [])
+      .map((opt) => String(opt.textContent || "").trim())
+      .filter(Boolean);
+    taskAllowedGroupsPreview.textContent =
+      selected.length > 0
+        ? `Seleccionados (${selected.length}): ${selected.join(", ")}`
+        : "Sin grupos seleccionados.";
   }
 
   function setSchedulePanelExpanded(expanded) {
@@ -261,6 +273,7 @@
         opt.selected = false;
       });
     }
+    refreshAllowedGroupsPreview();
     setScheduleFieldsState();
   }
 
@@ -295,6 +308,7 @@
         opt.selected = selectedGroupIds.has(String(opt.value || "").trim());
       });
     }
+    refreshAllowedGroupsPreview();
     taskFileIdInput.value = task.fileId || "";
     setScheduleFieldsState();
     taskFormTitle.textContent = "Editar tarea";
@@ -309,6 +323,9 @@
     taskScheduleEnabledInput.addEventListener("change", () => {
       setScheduleFieldsState();
     });
+  }
+  if (taskAllowedGroupContactIdsInput) {
+    taskAllowedGroupContactIdsInput.addEventListener("change", refreshAllowedGroupsPreview);
   }
 
   taskForm.addEventListener("submit", async (event) => {
@@ -635,5 +652,6 @@
 
   initSchedulePanel();
   setScheduleFieldsState();
+  refreshAllowedGroupsPreview();
   initTasksDataTable();
 })();

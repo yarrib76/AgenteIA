@@ -117,6 +117,7 @@
           </option>
           <% }) %>
         </select>
+        <p id="taskAllowedGroupsPreview" class="note">Sin grupos seleccionados.</p>
       </label>
     </div>
 
@@ -188,6 +189,7 @@
         <th data-col="programacion">Programacion</th>
         <th data-col="proxima_ejecucion">Prox. ejecucion</th>
         <th data-col="respuesta_a">Respuesta a</th>
+        <th data-col="grupos_permitidos">Grupos permitidos</th>
         <th data-col="archivo">Archivo</th>
         <th data-col="integracion">Integracion</th>
         <th data-col="plantilla">Plantilla</th>
@@ -216,6 +218,8 @@
         <td data-col="proxima_ejecucion"><%= task.nextRunAtFormatted || task.nextRunAt || "-" %></td>
         <% const responseContact = contacts.find(function(c) { return c.id === task.responseContactId; }); %>
         <td data-col="respuesta_a"><%= responseContact ? (responseContact.name + " (" + (responseContact.type === "group" ? (responseContact.groupId || responseContact.whatsappId || "-") : responseContact.phone) + ")") : "Sin ruteo" %></td>
+        <% const taskAllowedGroups = contacts.filter(function(c) { return c.type === "group" && (task.allowedGroupContactIds || []).includes(c.id); }); %>
+        <td data-col="grupos_permitidos" class="wrap-cell"><%= taskAllowedGroups.length > 0 ? taskAllowedGroups.map(function(g) { return g.name; }).join(", ") : "Sin grupos" %></td>
         <% const file = files.find(function(f) { return f.id === task.fileId; }); %>
         <td data-col="archivo"><%= file ? file.originalName : "Sin archivo" %></td>
         <% const integration = integrations.find(function(i) { return i.id === task.integrationId; }); %>
