@@ -69,6 +69,18 @@
         : "Sin grupos seleccionados.";
   }
 
+  function enableSimpleMultiToggle(selectEl) {
+    if (!selectEl) return;
+    selectEl.addEventListener("mousedown", (event) => {
+      const target = event.target;
+      if (!target || target.tagName !== "OPTION") return;
+      event.preventDefault();
+      target.selected = !target.selected;
+      selectEl.focus();
+      selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+
   function setSchedulePanelExpanded(expanded) {
     if (!taskScheduleBody || !taskScheduleToggleBtn) return;
     taskScheduleBody.classList.toggle("hidden", !expanded);
@@ -325,6 +337,7 @@
     });
   }
   if (taskAllowedGroupContactIdsInput) {
+    enableSimpleMultiToggle(taskAllowedGroupContactIdsInput);
     taskAllowedGroupContactIdsInput.addEventListener("change", refreshAllowedGroupsPreview);
   }
 
