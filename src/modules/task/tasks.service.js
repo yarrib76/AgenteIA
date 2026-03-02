@@ -1183,10 +1183,80 @@ async function executeTask(taskId, options = {}) {
       actionsCount: Array.isArray(parsed.actions) ? parsed.actions.length : 0,
     });
 
-    const hasApiAction = Array.isArray(parsed.actions)
+    const requiresApiCall = Boolean(normalizeText(task.integrationId));
+    let hasApiAction = Array.isArray(parsed.actions)
       && parsed.actions.some(
         (a) => normalizeText(a && a.type).toLowerCase() === "call_external_api"
       );
+    if (requiresApiCall && !hasApiAction) {
+      const forceApiPrompt = [
+        task.mergedPrompt,
+        todayContextText,
+        runtimeFileContext,
+        contactsReferenceText,
+        integrationsReferenceText,
+        "",
+        "REGLA OBLIGATORIA: Debes ejecutar call_external_api antes de cualquier accion final.",
+        `La tarea tiene integrationId configurada: ${task.integrationId}.`,
+        "En esta respuesta devuelve SOLO acciones call_external_api.",
+        "No devuelvas send_whatsapp en este paso.",
+        "Responde SOLO JSON valido, sin markdown.",
+        'Esquema: {"result_summary":"texto","actions":[{"type":"call_external_api","integrationId":"id_integracion","query":{},"body":{}}]}',
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      task = appendLog(
+        task,
+        "api_required_retry_prepared",
+        "ok",
+        "Prompt de reintento preparado para forzar call_external_api",
+        {
+          promptLength: forceApiPrompt.length,
+          promptPreview: toPromptPreview(forceApiPrompt),
+          requiredIntegrationId: task.integrationId,
+        }
+      );
+      task = appendLog(
+        task,
+        "model_call_api_retry",
+        "running",
+        "Reintentando modelo para forzar call_external_api",
+        {
+          provider: model.provider,
+          modelId: model.modelId,
+          requiredIntegrationId: task.integrationId,
+        }
+      );
+      tasks[index] = task;
+      await tasksRepo.saveAll(tasks);
+
+      const forcedApiOutput = await modelTestService.testModel({
+        envKey: model.envKey,
+        modelName: model.name,
+        provider: model.provider,
+        modelId: model.modelId,
+        baseUrl: model.baseUrl,
+        message: forceApiPrompt,
+        fileAttachment,
+      });
+      task = appendLog(task, "model_call_api_retry", "ok", "Respuesta de reintento API recibida", {
+        outputLength: String(forcedApiOutput || "").length,
+      });
+      parsed = parseModelOutputToJson(forcedApiOutput);
+      task = appendLog(task, "parse_output_api_retry", "ok", "Salida de reintento API parseada", {
+        keys: Object.keys(parsed || {}),
+        actionsCount: Array.isArray(parsed.actions) ? parsed.actions.length : 0,
+      });
+      hasApiAction = Array.isArray(parsed.actions)
+        && parsed.actions.some(
+          (a) => normalizeText(a && a.type).toLowerCase() === "call_external_api"
+        );
+      if (!hasApiAction) {
+        throw new Error(
+          `La tarea requiere call_external_api (integrationId=${task.integrationId}) y el modelo no la devolvio.`
+        );
+      }
+    }
     let actionPolicy = null;
     if (hasApiAction) {
       task = appendLog(
