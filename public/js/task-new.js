@@ -437,6 +437,25 @@
       .replace(/\\n/g, "\n");
   }
 
+  function prettyPrintJsonLikeLines(text) {
+    const lines = String(text || "").split("\n");
+    const output = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed && (trimmed.startsWith("{") || trimmed.startsWith("["))) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          output.push(JSON.stringify(parsed, null, 2));
+          continue;
+        } catch (error) {
+          // No es JSON puro en una sola linea; se deja como texto.
+        }
+      }
+      output.push(line);
+    }
+    return output.join("\n");
+  }
+
   function sanitizeFileName(value) {
     return String(value || "log_tarea")
       .replace(/[^\w.-]+/g, "_")
@@ -486,7 +505,7 @@
               if (!(val.includes("\\n") || val.includes("\n"))) return;
               expandedTextEntries.push({
                 key,
-                text: expandEscapedNewlines(val),
+                text: prettyPrintJsonLikeLines(expandEscapedNewlines(val)),
               });
               dataForJson[key] = "[ver bloque expandido abajo]";
             });
