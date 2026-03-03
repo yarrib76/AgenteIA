@@ -277,13 +277,13 @@
               Pasar a queued
             </button>
             <% } %>
-            <% if ((task.status || 'draft') === 'queued' && !task.scheduleEnabled) { %>
+            <% if (((task.status || 'draft') === 'queued' && !task.scheduleEnabled) || (task.scheduleEnabled && (task.status || 'draft') !== 'running')) { %>
             <button
               class="primary-button execute-task-btn"
               type="button"
               data-id="<%= task.id %>"
             >
-              Ejecutar
+              <%= task.scheduleEnabled ? 'Probar' : 'Ejecutar' %>
             </button>
             <% } %>
           </div>

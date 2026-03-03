@@ -1072,16 +1072,18 @@ async function executeTask(taskId, options = {}) {
   if (index < 0) throw new Error("Tarea no encontrada.");
 
   let task = tasks[index];
-  const allowedStatuses =
-    trigger === "scheduled" ? ["queued", "done", "failed"] : ["queued"];
-  if (trigger !== "scheduled" && task.scheduleEnabled) {
-    throw new Error("La tarea tiene programacion activa. Se ejecuta automaticamente.");
-  }
+  const allowedStatuses = trigger === "scheduled"
+    ? ["queued", "done", "failed"]
+    : (task.scheduleEnabled ? ["queued", "done", "failed"] : ["queued"]);
   if (!allowedStatuses.includes(task.status)) {
     throw new Error(
       trigger === "scheduled"
         ? "La tarea programada debe estar en estado queued/done/failed."
-        : "Solo se puede ejecutar manualmente una tarea en estado queued."
+        : (
+            task.scheduleEnabled
+              ? "Solo se puede ejecutar manualmente una tarea automatica en estado queued/done/failed."
+              : "Solo se puede ejecutar manualmente una tarea en estado queued."
+          )
     );
   }
   if (trigger === "scheduled" && task.status !== "queued") {
