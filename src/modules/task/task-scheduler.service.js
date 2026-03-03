@@ -10,6 +10,7 @@ function buildTaskSchedulerService() {
     if (tickRunning) return;
     tickRunning = true;
     try {
+      await tasksService.recoverStuckRunningTasks(new Date());
       const dueTasks = await tasksService.listDueScheduledTasks(new Date());
       for (const task of dueTasks) {
         if (!task || !task.id) continue;

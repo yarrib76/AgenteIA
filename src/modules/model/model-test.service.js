@@ -1,6 +1,31 @@
 const modelEnvService = require("./model-env.service");
 const fs = require("fs/promises");
 
+function getModelHttpTimeoutMs() {
+  const parsed = Number.parseInt(String(process.env.MODEL_HTTP_TIMEOUT_MS || "180000"), 10);
+  if (!Number.isFinite(parsed) || parsed < 5000) return 180000;
+  return parsed;
+}
+
+async function fetchWithTimeout(url, options = {}) {
+  const timeoutMs = getModelHttpTimeoutMs();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("timeout"), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      throw new Error(`Timeout HTTP modelo tras ${timeoutMs}ms.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function normalizeApiKey(raw) {
   const value = String(raw || "").trim();
   if (!value) return "";
@@ -51,7 +76,7 @@ function extractResponsesText(payload) {
 }
 
 async function callOpenAiCompatible({ apiKey, modelName, message }) {
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -78,7 +103,7 @@ async function callOpenAiWithFile({ apiKey, modelName, message, fileAttachment }
   const mime = String(fileAttachment.mimeType || "").trim() || "application/octet-stream";
   const fileData = `data:${mime};base64,${base64}`;
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetchWithTimeout("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -117,7 +142,7 @@ async function callOpenAiCompatibleCustom({
   baseUrl,
 }) {
   const url = `${String(baseUrl || "").replace(/\/+$/, "")}/chat/completions`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -139,7 +164,7 @@ async function callOpenAiCompatibleCustom({
 }
 
 async function callDeepSeek({ apiKey, modelName, message }) {
-  const response = await fetch("https://api.deepseek.com/chat/completions", {
+  const response = await fetchWithTimeout("https://api.deepseek.com/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,

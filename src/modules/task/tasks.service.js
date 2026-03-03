@@ -48,6 +48,26 @@ function normalizeCompareText(value) {
     .trim();
 }
 
+function getExecutionTimeoutMs() {
+  const parsed = Number.parseInt(String(process.env.TASK_EXECUTION_TIMEOUT_MS || "240000"), 10);
+  if (!Number.isFinite(parsed) || parsed < 10000) return 240000;
+  return parsed;
+}
+
+async function withTimeout(promise, timeoutMs, label) {
+  let timer = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Timeout ${label} tras ${timeoutMs}ms.`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function getZonedDateParts(timeZone) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -1033,6 +1053,7 @@ async function executeActions(task, parsed, context) {
 
 async function executeTask(taskId, options = {}) {
   const trigger = normalizeText(options.trigger) || "manual";
+  const executionTimeoutMs = getExecutionTimeoutMs();
   const { tasks: tasksRepo } = getRepositories();
   const tasks = await listTasks();
   const index = tasks.findIndex((task) => task.id === taskId);
@@ -1163,15 +1184,19 @@ async function executeTask(taskId, options = {}) {
     tasks[index] = task;
     await tasksRepo.saveAll(tasks);
 
-    const output = await modelTestService.testModel({
-      envKey: model.envKey,
-      modelName: model.name,
-      provider: model.provider,
-      modelId: model.modelId,
-      baseUrl: model.baseUrl,
-      message: modelPrompt,
-      fileAttachment,
-    });
+    const output = await withTimeout(
+      modelTestService.testModel({
+        envKey: model.envKey,
+        modelName: model.name,
+        provider: model.provider,
+        modelId: model.modelId,
+        baseUrl: model.baseUrl,
+        message: modelPrompt,
+        fileAttachment,
+      }),
+      executionTimeoutMs,
+      "model_call"
+    );
 
     task = appendLog(task, "model_call", "ok", "Respuesta de modelo recibida", {
       outputLength: String(output || "").length,
@@ -1230,15 +1255,19 @@ async function executeTask(taskId, options = {}) {
       tasks[index] = task;
       await tasksRepo.saveAll(tasks);
 
-      const forcedApiOutput = await modelTestService.testModel({
-        envKey: model.envKey,
-        modelName: model.name,
-        provider: model.provider,
-        modelId: model.modelId,
-        baseUrl: model.baseUrl,
-        message: forceApiPrompt,
-        fileAttachment,
-      });
+      const forcedApiOutput = await withTimeout(
+        modelTestService.testModel({
+          envKey: model.envKey,
+          modelName: model.name,
+          provider: model.provider,
+          modelId: model.modelId,
+          baseUrl: model.baseUrl,
+          message: forceApiPrompt,
+          fileAttachment,
+        }),
+        executionTimeoutMs,
+        "model_call_api_retry"
+      );
       task = appendLog(task, "model_call_api_retry", "ok", "Respuesta de reintento API recibida", {
         outputLength: String(forcedApiOutput || "").length,
       });
@@ -1299,14 +1328,18 @@ async function executeTask(taskId, options = {}) {
       tasks[index] = task;
       await tasksRepo.saveAll(tasks);
 
-      const followupOutput = await modelTestService.testModel({
-        envKey: model.envKey,
-        modelName: model.name,
-        provider: model.provider,
-        modelId: model.modelId,
-        baseUrl: model.baseUrl,
-        message: followupPrompt,
-      });
+      const followupOutput = await withTimeout(
+        modelTestService.testModel({
+          envKey: model.envKey,
+          modelName: model.name,
+          provider: model.provider,
+          modelId: model.modelId,
+          baseUrl: model.baseUrl,
+          message: followupPrompt,
+        }),
+        executionTimeoutMs,
+        "model_call_followup"
+      );
       task = appendLog(task, "model_call_followup", "ok", "Respuesta follow-up recibida", {
         outputLength: String(followupOutput || "").length,
       });
@@ -1378,15 +1411,19 @@ async function executeTask(taskId, options = {}) {
         tasks[index] = task;
         await tasksRepo.saveAll(tasks);
 
-        const retryOutput = await modelTestService.testModel({
-          envKey: model.envKey,
-          modelName: model.name,
-          provider: model.provider,
-          modelId: model.modelId,
-          baseUrl: model.baseUrl,
-          message: retryPrompt,
-          fileAttachment,
-        });
+        const retryOutput = await withTimeout(
+          modelTestService.testModel({
+            envKey: model.envKey,
+            modelName: model.name,
+            provider: model.provider,
+            modelId: model.modelId,
+            baseUrl: model.baseUrl,
+            message: retryPrompt,
+            fileAttachment,
+          }),
+          executionTimeoutMs,
+          "model_call_retry"
+        );
         task = appendLog(task, "model_call_retry", "ok", "Respuesta de reintento recibida", {
           outputLength: String(retryOutput || "").length,
         });
@@ -1538,6 +1575,42 @@ async function runScheduledTask(taskId, nowDate = new Date()) {
   return updated;
 }
 
+async function recoverStuckRunningTasks(nowDate = new Date()) {
+  const { tasks: tasksRepo } = getRepositories();
+  const tasks = await listTasks();
+  const timeoutMs = getExecutionTimeoutMs();
+  const nowMs = nowDate.getTime();
+  let changed = 0;
+
+  for (let i = 0; i < tasks.length; i += 1) {
+    const task = tasks[i];
+    if (!task || task.status !== "running") continue;
+    const startedMs = new Date(task.startedAt || task.updatedAt || 0).getTime();
+    if (!Number.isFinite(startedMs)) continue;
+    if (nowMs - startedMs < timeoutMs) continue;
+
+    let next = {
+      ...task,
+      status: "failed",
+      executedAt: nowDate.toISOString(),
+      updatedAt: nowDate.toISOString(),
+      executionError: `Failsafe: tarea en running por mas de ${timeoutMs}ms.`,
+    };
+    next = appendLog(next, "failsafe", "error", "Tarea recuperada por timeout en estado running", {
+      timeoutMs,
+      startedAt: task.startedAt || null,
+      recoveredAt: nowDate.toISOString(),
+    });
+    tasks[i] = next;
+    changed += 1;
+  }
+
+  if (changed > 0) {
+    await tasksRepo.saveAll(tasks);
+  }
+  return changed;
+}
+
 async function clearTaskLogs(taskId) {
   const { tasks: tasksRepo } = getRepositories();
   const tasks = await listTasks();
@@ -1572,6 +1645,7 @@ module.exports = {
   executeTask,
   listDueScheduledTasks,
   runScheduledTask,
+  recoverStuckRunningTasks,
   clearTaskLogs,
   composePrompt,
 };
