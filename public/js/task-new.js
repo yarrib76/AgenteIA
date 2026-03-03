@@ -431,6 +431,12 @@
     }
   }
 
+  function expandEscapedNewlines(value) {
+    return String(value || "")
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n");
+  }
+
   function sanitizeFileName(value) {
     return String(value || "log_tarea")
       .replace(/[^\w.-]+/g, "_")
@@ -475,6 +481,16 @@
           lines.push("```json");
           lines.push(toPrettyJson(log.data));
           lines.push("```");
+          if (log.data && typeof log.data === "object" && !Array.isArray(log.data)) {
+            Object.entries(log.data).forEach(([key, val]) => {
+              if (typeof val !== "string") return;
+              if (!val.includes("\\n")) return;
+              lines.push(`- ${key} (expandido):`);
+              lines.push("```text");
+              lines.push(expandEscapedNewlines(val));
+              lines.push("```");
+            });
+          }
         }
       });
     }
