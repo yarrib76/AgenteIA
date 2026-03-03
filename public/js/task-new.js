@@ -32,10 +32,6 @@
   const promptModal = document.getElementById("taskPromptModal");
   const promptOutput = document.getElementById("taskPromptOutput");
   const closeModalBtn = document.getElementById("closeTaskPromptModalBtn");
-  const taskLogModal = document.getElementById("taskLogModal");
-  const taskLogOutput = document.getElementById("taskLogOutput");
-  const closeTaskLogModalBtn = document.getElementById("closeTaskLogModalBtn");
-  const clearTaskLogsBtn = document.getElementById("clearTaskLogsBtn");
   const schedulePanelStorageKey = "task_schedule_panel_expanded";
   const tasksTable = document.getElementById("tasksTable");
   const tasksTableSearch = document.getElementById("tasksTableSearch");
@@ -44,7 +40,6 @@
   const tasksNextPageBtn = document.getElementById("tasksNextPageBtn");
   const tasksPageInfo = document.getElementById("tasksPageInfo");
   const tasksColumnStorageKey = "tasks_table_columns_v1";
-  let currentLogTaskId = "";
   const logsTimeZone = "America/Argentina/Buenos_Aires";
 
   if (!taskForm) return;
@@ -412,115 +407,121 @@
     });
   });
 
-  function closeLogModal() {
-    taskLogModal.classList.add("hidden");
-    taskLogOutput.textContent = "";
-    currentLogTaskId = "";
+  function formatLogDate(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat("es-AR", {
+      timeZone: logsTimeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(date);
   }
 
-  closeTaskLogModalBtn.addEventListener("click", closeLogModal);
-  taskLogModal.addEventListener("click", (event) => {
-    if (event.target === taskLogModal) closeLogModal();
-  });
-
-  function renderTaskLogs(task) {
-    function formatLogDate(value) {
-      if (!value) return "-";
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return String(value);
-      return new Intl.DateTimeFormat("es-AR", {
-        timeZone: logsTimeZone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).format(date);
+  function toPrettyJson(value) {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (error) {
+      return String(value);
     }
+  }
 
+  function sanitizeFileName(value) {
+    return String(value || "log_tarea")
+      .replace(/[^\w.-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+
+  function downloadTextFile(filename, content, mimeType = "text/plain;charset=utf-8") {
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  function renderTaskLogsMarkdown(task) {
     const lines = [];
-    lines.push(`Task ID: ${task.id}`);
-    lines.push(`Estado: ${task.status}`);
-    if (task.executionError) lines.push(`Error: ${task.executionError}`);
-    if (task.executionResult) lines.push(`Resultado: ${task.executionResult}`);
+    lines.push("# Log de ejecucion de tarea");
     lines.push("");
-    lines.push("Pasos:");
+    lines.push(`- Task ID: \`${task.id}\``);
+    lines.push(`- Estado: **${task.status}**`);
+    if (task.executionError) lines.push(`- Error: ${task.executionError}`);
+    if (task.executionResult) lines.push(`- Resultado: ${task.executionResult}`);
 
     const logs = Array.isArray(task.executionLogs) ? task.executionLogs : [];
+    lines.push("");
+    lines.push("## Pasos");
     if (logs.length === 0) {
-      lines.push("- Sin logs registrados.");
+      lines.push("Sin logs registrados.");
     } else {
       logs.forEach((log, idx) => {
-        const atFormatted = formatLogDate(log.at);
-        lines.push(
-          `${idx + 1}. [${atFormatted}] step=${log.step} status=${log.status} msg=${log.message}`
-        );
+        lines.push("");
+        lines.push(`### ${idx + 1}. ${log.step} (${log.status})`);
+        lines.push(`- Fecha: ${formatLogDate(log.at)}`);
+        lines.push(`- Mensaje: ${log.message}`);
         if (log.data) {
-          lines.push(`   data=${JSON.stringify(log.data)}`);
+          lines.push("- Data:");
+          lines.push("```json");
+          lines.push(toPrettyJson(log.data));
+          lines.push("```");
         }
       });
     }
 
     const actions = Array.isArray(task.executedActions) ? task.executedActions : [];
     lines.push("");
-    lines.push(`Acciones ejecutadas: ${actions.length}`);
+    lines.push(`## Acciones ejecutadas (${actions.length})`);
     actions.forEach((action, idx) => {
-      lines.push(`${idx + 1}. ${JSON.stringify(action)}`);
+      lines.push("");
+      lines.push(`### ${idx + 1}. ${action.type || "accion"}`);
+      lines.push("```json");
+      lines.push(toPrettyJson(action));
+      lines.push("```");
     });
+
     return lines.join("\n");
   }
 
-  async function loadTaskLog(taskId) {
+  async function downloadTaskLog(taskId) {
     const response = await fetch(`/api/tasks/${taskId}`);
     const data = await response.json();
     if (!response.ok || !data.ok) {
       throw new Error(data.message || "No se pudo obtener detalle de tarea.");
     }
-    taskLogOutput.textContent = renderTaskLogs(data.task);
+
+    const markdown = renderTaskLogsMarkdown(data.task);
+    const taskIdSafe = sanitizeFileName(data.task && data.task.id ? data.task.id : taskId);
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const filename = `task-log_${taskIdSafe}_${y}${m}${d}_${hh}${mm}.md`;
+    downloadTextFile(filename, markdown, "text/markdown;charset=utf-8");
   }
 
   logButtons.forEach((button) => {
     button.addEventListener("click", async () => {
-      currentLogTaskId = button.dataset.taskId;
-      taskLogOutput.textContent = "Cargando log...";
-      taskLogModal.classList.remove("hidden");
       try {
-        await loadTaskLog(currentLogTaskId);
+        await downloadTaskLog(button.dataset.taskId);
+        taskMsg.textContent = "Log descargado en formato .md.";
       } catch (error) {
-        taskLogOutput.textContent = error.message;
+        taskMsg.textContent = error.message;
       }
     });
   });
-
-  if (clearTaskLogsBtn) {
-    clearTaskLogsBtn.addEventListener("click", async () => {
-      if (!currentLogTaskId) return;
-      const confirmed = window.confirm(
-        "Se borraran los logs y resultados de ejecucion de esta tarea. Continuar?"
-      );
-      if (!confirmed) return;
-
-      try {
-        clearTaskLogsBtn.disabled = true;
-        const response = await fetch(`/api/tasks/${currentLogTaskId}/logs/clear`, {
-          method: "POST",
-        });
-        const data = await response.json();
-        if (!response.ok || !data.ok) {
-          throw new Error(data.message || "No se pudieron limpiar los logs.");
-        }
-        taskMsg.textContent = "Logs de tarea limpiados.";
-        await loadTaskLog(currentLogTaskId);
-        setTimeout(() => window.location.reload(), 400);
-      } catch (error) {
-        taskMsg.textContent = error.message;
-      } finally {
-        clearTaskLogsBtn.disabled = false;
-      }
-    });
-  }
 
   editButtons.forEach((button) => {
     button.addEventListener("click", () => {
