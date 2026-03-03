@@ -477,20 +477,30 @@
         lines.push(`- Fecha: ${formatLogDate(log.at)}`);
         lines.push(`- Mensaje: ${log.message}`);
         if (log.data) {
-          lines.push("- Data:");
-          lines.push("```json");
-          lines.push(toPrettyJson(log.data));
-          lines.push("```");
+          let dataForJson = log.data;
+          const expandedTextEntries = [];
           if (log.data && typeof log.data === "object" && !Array.isArray(log.data)) {
+            dataForJson = { ...log.data };
             Object.entries(log.data).forEach(([key, val]) => {
               if (typeof val !== "string") return;
-              if (!val.includes("\\n")) return;
-              lines.push(`- ${key} (expandido):`);
-              lines.push("```text");
-              lines.push(expandEscapedNewlines(val));
-              lines.push("```");
+              if (!(val.includes("\\n") || val.includes("\n"))) return;
+              expandedTextEntries.push({
+                key,
+                text: expandEscapedNewlines(val),
+              });
+              dataForJson[key] = "[ver bloque expandido abajo]";
             });
           }
+          lines.push("- Data:");
+          lines.push("```json");
+          lines.push(toPrettyJson(dataForJson));
+          lines.push("```");
+          expandedTextEntries.forEach((entry) => {
+            lines.push(`- ${entry.key} (expandido):`);
+            lines.push("```text");
+            lines.push(entry.text);
+            lines.push("```");
+          });
         }
       });
     }
