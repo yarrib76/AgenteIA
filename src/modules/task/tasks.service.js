@@ -913,6 +913,24 @@ function extractVendorNamesFromApiResults(apiResults) {
   return names;
 }
 
+function hasNoDataInApiResults(apiResults) {
+  const rows = Array.isArray(apiResults) ? apiResults : [];
+  if (rows.length === 0) return true;
+  for (const item of rows) {
+    const result = item && item.result ? item.result : {};
+    const payload = result.responseJson || {};
+    const dataRows = Array.isArray(payload.rows) ? payload.rows : [];
+    const rowCountRaw = payload.rowCount;
+    const rowCount = Number.isFinite(Number(rowCountRaw)) ? Number(rowCountRaw) : null;
+    const noRows = dataRows.length === 0;
+    const noCount = rowCount === 0;
+    if (!(noRows || noCount)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function buildAllowedContactIdsByVendorNames(contacts, vendorNameKeys) {
   const allowed = new Set();
   if (!vendorNameKeys || vendorNameKeys.size === 0) return allowed;
@@ -1190,6 +1208,7 @@ async function executeTask(taskId, options = {}) {
     let parsed = { result_summary: "", actions: [] };
     let outputForRaw = "";
     let actionPolicy = null;
+    let allowNoWhatsappOnNoData = false;
 
     if (hasConfiguredIntegration) {
       task = appendLog(
@@ -1220,6 +1239,7 @@ async function executeTask(taskId, options = {}) {
           result: apiResult,
         },
       ];
+      allowNoWhatsappOnNoData = hasNoDataInApiResults(apiResults);
 
       task = appendLog(task, "api_actions", "ok", "Acciones API ejecutadas", { count: 1 });
       task = appendLog(task, "api_action", "ok", "Resultado call_external_api", apiResult);
@@ -1285,6 +1305,17 @@ async function executeTask(taskId, options = {}) {
             vendorNames: Array.from(vendorNameKeys),
             allowedVendorContactIds: Array.from(allowedVendorContactIds),
             allowedGroupContactIds: Array.from(allowedGroupContactIds),
+          }
+        );
+      }
+      if (allowNoWhatsappOnNoData) {
+        task = appendLog(
+          task,
+          "whatsapp_requirement",
+          "ok",
+          "Sin datos en API: se permite actions=[] sin envio de WhatsApp",
+          {
+            rowCount: apiResult && apiResult.responseJson ? apiResult.responseJson.rowCount : null,
           }
         );
       }
@@ -1354,7 +1385,7 @@ async function executeTask(taskId, options = {}) {
       });
     }
 
-    if (requiresWhatsAppAction(task)) {
+    if (requiresWhatsAppAction(task) && !allowNoWhatsappOnNoData) {
       const initialActions = Array.isArray(parsed.actions) ? parsed.actions : [];
       const hasWhatsAppAction = initialActions.some(
         (a) => normalizeText(a && a.type).toLowerCase() === "send_whatsapp"
@@ -1425,7 +1456,7 @@ async function executeTask(taskId, options = {}) {
     const failedActions = actionResults.filter((a) => !a.ok);
     const okActions = actionResults.filter((a) => a.ok);
 
-    if (requiresWhatsAppAction(task)) {
+    if (requiresWhatsAppAction(task) && !allowNoWhatsappOnNoData) {
       const hasWhatsAppAction = okActions.some((a) => a.type === "send_whatsapp");
       if (!hasWhatsAppAction) {
         throw new Error(
