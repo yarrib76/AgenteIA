@@ -253,16 +253,28 @@ function composePrompt(agentRoleDetail, taskPromptTemplate, taskInput, fileConte
   return sections.join("\n\n");
 }
 
-function buildActionContractPrompt() {
+function buildActionContractPrompt({ allowApiActions = false } = {}) {
+  if (allowApiActions) {
+    return [
+      "Responde SOLO en JSON valido, sin markdown.",
+      "Esquema de salida:",
+      '{"result_summary":"texto", "actions":[{"type":"call_external_api","integrationId":"id_integracion","query":{},"body":{}},{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}] }',
+      "Si no hay accion, enviar actions: [].",
+      "Usa call_external_api solo cuando necesites consultar APIs externas.",
+      "Si la accion es send_whatsapp, el campo message debe comenzar exactamente con el detalle del rol del agente.",
+      "Si hay lista de contactos disponible, prioriza devolver contactId.",
+      "Si hay lista de integraciones disponible, prioriza devolver integrationId.",
+      "No inventes contactos inexistentes.",
+    ].join("\n");
+  }
+
   return [
     "Responde SOLO en JSON valido, sin markdown.",
     "Esquema de salida:",
-    '{"result_summary":"texto", "actions":[{"type":"call_external_api","integrationId":"id_integracion","query":{},"body":{}},{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}] }',
+    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}] }',
     "Si no hay accion, enviar actions: [].",
-    "Usa call_external_api solo cuando necesites consultar APIs externas.",
     "Si la accion es send_whatsapp, el campo message debe comenzar exactamente con el detalle del rol del agente.",
     "Si hay lista de contactos disponible, prioriza devolver contactId.",
-    "Si hay lista de integraciones disponible, prioriza devolver integrationId.",
     "No inventes contactos inexistentes.",
   ].join("\n");
 }
@@ -1116,10 +1128,22 @@ async function executeTask(taskId, options = {}) {
     let runtimeFileContext = "";
     let fileAttachment = null;
     const todayContextText = buildTodayContextText("America/Argentina/Buenos_Aires");
+    const hasConfiguredIntegration = Boolean(normalizeText(task.integrationId));
     const availableContacts = await contactsService.listContacts();
-    const availableIntegrations = await integrationsService.listIntegrations();
+    let availableIntegrations = [];
+    if (hasConfiguredIntegration) {
+      const configuredIntegration = await integrationsService.getIntegrationById(task.integrationId);
+      if (!configuredIntegration) {
+        throw new Error(`Integracion API configurada invalida: ${task.integrationId}`);
+      }
+      availableIntegrations = [configuredIntegration];
+    }
     const contactsReferenceText = buildContactsReferenceText(availableContacts);
     const integrationsReferenceText = buildIntegrationsReferenceText(availableIntegrations);
+    task = appendLog(task, "execution_route", "ok", "Ruta de ejecucion resuelta", {
+      mode: hasConfiguredIntegration ? "api_configured_auto_then_model" : "model_only",
+      integrationId: hasConfiguredIntegration ? task.integrationId : null,
+    });
     if (task.fileId) {
       const fileContext = await filesService.getFileRuntimeContext(task.fileId);
       if (fileContext) {
@@ -1161,154 +1185,42 @@ async function executeTask(taskId, options = {}) {
       }
     }
 
-    const modelPrompt = [
-      task.mergedPrompt,
-      todayContextText,
-      runtimeFileContext,
-      contactsReferenceText,
-      integrationsReferenceText,
-      "",
-      buildActionContractPrompt(),
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    task = appendLog(task, "prompt_prepared", "ok", "Prompt preparado para modelo", {
-      promptLength: modelPrompt.length,
-      promptPreview: toPromptPreview(modelPrompt),
-    });
-
-    task = appendLog(task, "model_call", "running", "Llamando al modelo", {
-      provider: model.provider,
-      modelId: model.modelId,
-    });
-    tasks[index] = task;
-    await tasksRepo.saveAll(tasks);
-
-    const output = await withTimeout(
-      modelTestService.testModel({
-        envKey: model.envKey,
-        modelName: model.name,
-        provider: model.provider,
-        modelId: model.modelId,
-        baseUrl: model.baseUrl,
-        message: modelPrompt,
-        fileAttachment,
-      }),
-      executionTimeoutMs,
-      "model_call"
-    );
-
-    task = appendLog(task, "model_call", "ok", "Respuesta de modelo recibida", {
-      outputLength: String(output || "").length,
-    });
-
-    let parsed = parseModelOutputToJson(output);
-    task = appendLog(task, "parse_output", "ok", "Salida parseada a JSON", {
-      keys: Object.keys(parsed || {}),
-      actionsCount: Array.isArray(parsed.actions) ? parsed.actions.length : 0,
-    });
-
-    const requiresApiCall = Boolean(normalizeText(task.integrationId));
-    let hasApiAction = Array.isArray(parsed.actions)
-      && parsed.actions.some(
-        (a) => normalizeText(a && a.type).toLowerCase() === "call_external_api"
-      );
-    if (requiresApiCall && !hasApiAction) {
-      const forceApiPrompt = [
-        task.mergedPrompt,
-        todayContextText,
-        runtimeFileContext,
-        contactsReferenceText,
-        integrationsReferenceText,
-        "",
-        "REGLA OBLIGATORIA: Debes ejecutar call_external_api antes de cualquier accion final.",
-        `La tarea tiene integrationId configurada: ${task.integrationId}.`,
-        "En esta respuesta devuelve SOLO acciones call_external_api.",
-        "No devuelvas send_whatsapp en este paso.",
-        "Responde SOLO JSON valido, sin markdown.",
-        'Esquema: {"result_summary":"texto","actions":[{"type":"call_external_api","integrationId":"id_integracion","query":{},"body":{}}]}',
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-      task = appendLog(
-        task,
-        "api_required_retry_prepared",
-        "ok",
-        "Prompt de reintento preparado para forzar call_external_api",
-        {
-          promptLength: forceApiPrompt.length,
-          promptPreview: toPromptPreview(forceApiPrompt),
-          requiredIntegrationId: task.integrationId,
-        }
-      );
-      task = appendLog(
-        task,
-        "model_call_api_retry",
-        "running",
-        "Reintentando modelo para forzar call_external_api",
-        {
-          provider: model.provider,
-          modelId: model.modelId,
-          requiredIntegrationId: task.integrationId,
-        }
-      );
-      tasks[index] = task;
-      await tasksRepo.saveAll(tasks);
-
-      const forcedApiOutput = await withTimeout(
-        modelTestService.testModel({
-          envKey: model.envKey,
-          modelName: model.name,
-          provider: model.provider,
-          modelId: model.modelId,
-          baseUrl: model.baseUrl,
-          message: forceApiPrompt,
-          fileAttachment,
-        }),
-        executionTimeoutMs,
-        "model_call_api_retry"
-      );
-      task = appendLog(task, "model_call_api_retry", "ok", "Respuesta de reintento API recibida", {
-        outputLength: String(forcedApiOutput || "").length,
-      });
-      parsed = parseModelOutputToJson(forcedApiOutput);
-      task = appendLog(task, "parse_output_api_retry", "ok", "Salida de reintento API parseada", {
-        keys: Object.keys(parsed || {}),
-        actionsCount: Array.isArray(parsed.actions) ? parsed.actions.length : 0,
-      });
-      hasApiAction = Array.isArray(parsed.actions)
-        && parsed.actions.some(
-          (a) => normalizeText(a && a.type).toLowerCase() === "call_external_api"
-        );
-      if (!hasApiAction) {
-        throw new Error(
-          `La tarea requiere call_external_api (integrationId=${task.integrationId}) y el modelo no la devolvio.`
-        );
-      }
-    }
+    let parsed = { result_summary: "", actions: [] };
+    let outputForRaw = "";
     let actionPolicy = null;
-    if (hasApiAction) {
+
+    if (hasConfiguredIntegration) {
       task = appendLog(
         task,
         "api_actions",
         "running",
-        "Ejecutando acciones call_external_api",
+        "Ejecutando integracion API configurada automaticamente",
         {
-          count: parsed.actions.filter(
-            (a) => normalizeText(a && a.type).toLowerCase() === "call_external_api"
-          ).length,
+          count: 1,
+          integrationId: task.integrationId,
+          mode: "configured_auto",
         }
       );
       tasks[index] = task;
       await tasksRepo.saveAll(tasks);
 
-      const apiResults = await executeApiActions(task, parsed);
-      task = appendLog(task, "api_actions", "ok", "Acciones API ejecutadas", {
-        count: apiResults.length,
+      const apiResult = await executeExternalApiAction(task, {
+        type: "call_external_api",
+        integrationId: task.integrationId,
+        query: {},
+        body: {},
       });
-      for (const item of apiResults) {
-        task = appendLog(task, "api_action", "ok", "Resultado call_external_api", item.result);
-      }
+      const apiResults = [
+        {
+          index: 0,
+          type: "call_external_api",
+          ok: true,
+          result: apiResult,
+        },
+      ];
+
+      task = appendLog(task, "api_actions", "ok", "Acciones API ejecutadas", { count: 1 });
+      task = appendLog(task, "api_action", "ok", "Resultado call_external_api", apiResult);
 
       const followupPrompt = buildApiResultsFollowupPrompt({
         mergedPrompt: task.mergedPrompt,
@@ -1340,8 +1252,9 @@ async function executeTask(taskId, options = {}) {
         executionTimeoutMs,
         "model_call_followup"
       );
+      outputForRaw = String(followupOutput || "");
       task = appendLog(task, "model_call_followup", "ok", "Respuesta follow-up recibida", {
-        outputLength: String(followupOutput || "").length,
+        outputLength: outputForRaw.length,
       });
       parsed = parseModelOutputToJson(followupOutput);
       task = appendLog(task, "parse_output_followup", "ok", "Salida follow-up parseada", {
@@ -1373,6 +1286,70 @@ async function executeTask(taskId, options = {}) {
           }
         );
       }
+    } else {
+      const modelPrompt = [
+        task.mergedPrompt,
+        todayContextText,
+        runtimeFileContext,
+        contactsReferenceText,
+        "",
+        buildActionContractPrompt({ allowApiActions: false }),
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      task = appendLog(task, "prompt_prepared", "ok", "Prompt preparado para modelo", {
+        promptLength: modelPrompt.length,
+        promptPreview: toPromptPreview(modelPrompt),
+      });
+
+      task = appendLog(task, "model_call", "running", "Llamando al modelo", {
+        provider: model.provider,
+        modelId: model.modelId,
+      });
+      tasks[index] = task;
+      await tasksRepo.saveAll(tasks);
+
+      const output = await withTimeout(
+        modelTestService.testModel({
+          envKey: model.envKey,
+          modelName: model.name,
+          provider: model.provider,
+          modelId: model.modelId,
+          baseUrl: model.baseUrl,
+          message: modelPrompt,
+          fileAttachment,
+        }),
+        executionTimeoutMs,
+        "model_call"
+      );
+      outputForRaw = String(output || "");
+
+      task = appendLog(task, "model_call", "ok", "Respuesta de modelo recibida", {
+        outputLength: outputForRaw.length,
+      });
+
+      parsed = parseModelOutputToJson(output);
+      if (Array.isArray(parsed.actions)) {
+        const kept = parsed.actions.filter(
+          (a) => normalizeText(a && a.type).toLowerCase() !== "call_external_api"
+        );
+        if (kept.length !== parsed.actions.length) {
+          task = appendLog(
+            task,
+            "api_action_ignored",
+            "ok",
+            "Se ignoraron acciones call_external_api porque la tarea no tiene integrationId",
+            {
+              ignoredCount: parsed.actions.length - kept.length,
+            }
+          );
+          parsed.actions = kept;
+        }
+      }
+      task = appendLog(task, "parse_output", "ok", "Salida parseada a JSON", {
+        keys: Object.keys(parsed || {}),
+        actionsCount: Array.isArray(parsed.actions) ? parsed.actions.length : 0,
+      });
     }
 
     if (requiresWhatsAppAction(task)) {
@@ -1424,8 +1401,9 @@ async function executeTask(taskId, options = {}) {
           executionTimeoutMs,
           "model_call_retry"
         );
+        outputForRaw = String(retryOutput || "");
         task = appendLog(task, "model_call_retry", "ok", "Respuesta de reintento recibida", {
-          outputLength: String(retryOutput || "").length,
+          outputLength: outputForRaw.length,
         });
 
         const retryParsed = parseModelOutputToJson(retryOutput);
@@ -1470,9 +1448,9 @@ async function executeTask(taskId, options = {}) {
       status: "done",
       executedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      executionResult: normalizeText(parsed.result_summary) || String(output || ""),
+      executionResult: normalizeText(parsed.result_summary) || outputForRaw,
       executionError: null,
-      modelOutputRaw: String(output || ""),
+      modelOutputRaw: outputForRaw,
       modelOutputParsed: parsed,
       executedActions: actionResults,
     };
