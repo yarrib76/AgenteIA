@@ -248,6 +248,7 @@ function buildWhatsAppService() {
           text: finalText,
           status: "routed_from_task_reply",
         });
+        await taskReplyRoutesService.markRouteResponded(route.id);
       } catch (error) {
         // Si falla un destino, no se interrumpe el procesamiento del resto.
       }

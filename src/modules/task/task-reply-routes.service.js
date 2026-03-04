@@ -21,6 +21,9 @@ function normalizeRouteRow(row) {
     destinationPhone: normalizeContactKey(row.destinationPhone),
     routingEnabled:
       typeof row.routingEnabled === "boolean" ? row.routingEnabled : hasDestination,
+    responded: row.responded === true || Boolean(row.closedAt),
+    respondedAt: row.respondedAt || row.closedAt || null,
+    closedAt: row.closedAt || null,
     originalMessage: String(row.originalMessage || "").trim(),
     lastOutboundMessageId: String(row.lastOutboundMessageId || "").trim(),
     lastOutboundAt: row.lastOutboundAt || null,
@@ -83,6 +86,9 @@ async function upsertRouteForTask({
       destinationContactId: nextRoutingEnabled ? nextDestinationContactId : "",
       destinationPhone: nextRoutingEnabled ? nextDestinationPhone : "",
       routingEnabled: nextRoutingEnabled,
+      responded: false,
+      respondedAt: null,
+      closedAt: null,
       originalMessage: nextOriginalMessage,
       lastOutboundMessageId: nextLastOutboundMessageId,
       lastOutboundAt: nextLastOutboundAt,
@@ -101,6 +107,29 @@ async function findActiveRoutesBySourcePhone(sourcePhone) {
   if (!key) return [];
   const rows = await listRoutes();
   return rows.filter((row) => row.enabled && row.sourcePhone === key);
+}
+
+async function markRouteResponded(routeId) {
+  const targetId = String(routeId || "").trim();
+  if (!targetId) return null;
+  const rows = await listRoutes();
+  const now = new Date().toISOString();
+  let updatedRoute = null;
+  const updated = rows.map((row) => {
+    if (row.id !== targetId) return row;
+    updatedRoute = {
+      ...row,
+      responded: true,
+      respondedAt: now,
+      closedAt: now,
+      enabled: false,
+      updatedAt: now,
+    };
+    return updatedRoute;
+  });
+  if (!updatedRoute) return null;
+  await saveAll(updated);
+  return updatedRoute;
 }
 
 async function disableRoutesByTaskId(taskId) {
@@ -150,7 +179,12 @@ async function findRoutesForIncoming({
     return { routes: [], strategy: "none" };
   }
 
-  const sortedActive = active
+  const openRoutes = active.filter((row) => !row.responded && !row.closedAt);
+  if (openRoutes.length === 0) {
+    return { routes: [], strategy: "no_open_routes" };
+  }
+
+  const sortedActive = openRoutes
     .slice()
     .sort((a, b) => getRouteEventTimeMs(b) - getRouteEventTimeMs(a));
 
@@ -199,4 +233,5 @@ module.exports = {
   findActiveRoutesBySourcePhone,
   findRoutesForIncoming,
   disableRoutesByTaskId,
+  markRouteResponded,
 };
