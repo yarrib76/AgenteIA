@@ -10,12 +10,17 @@ function normalizeContactKey(value) {
 }
 
 function normalizeRouteRow(row) {
+  const hasDestination = Boolean(
+    String(row.destinationContactId || "").trim() && String(row.destinationPhone || "").trim()
+  );
   return {
     id: row.id || randomUUID(),
     taskId: String(row.taskId || "").trim(),
     sourcePhone: normalizeContactKey(row.sourcePhone),
     destinationContactId: String(row.destinationContactId || "").trim(),
     destinationPhone: normalizeContactKey(row.destinationPhone),
+    routingEnabled:
+      typeof row.routingEnabled === "boolean" ? row.routingEnabled : hasDestination,
     originalMessage: String(row.originalMessage || "").trim(),
     lastOutboundMessageId: String(row.lastOutboundMessageId || "").trim(),
     lastOutboundAt: row.lastOutboundAt || null,
@@ -30,13 +35,7 @@ async function listRoutes() {
   const rows = await routesRepo.list();
   return (Array.isArray(rows) ? rows : [])
     .map(normalizeRouteRow)
-    .filter(
-      (row) =>
-        row.taskId &&
-        row.sourcePhone &&
-        row.destinationContactId &&
-        row.destinationPhone
-    )
+    .filter((row) => row.taskId && row.sourcePhone)
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 }
 
@@ -50,6 +49,7 @@ async function upsertRouteForTask({
   sourcePhone,
   destinationContactId,
   destinationPhone,
+  routingEnabled = true,
   originalMessage,
   lastOutboundMessageId,
   lastOutboundAt,
@@ -58,68 +58,39 @@ async function upsertRouteForTask({
   const nextSourcePhone = normalizeContactKey(sourcePhone);
   const nextDestinationContactId = String(destinationContactId || "").trim();
   const nextDestinationPhone = normalizeContactKey(destinationPhone);
+  const nextRoutingEnabled = Boolean(routingEnabled);
   const nextOriginalMessage = String(originalMessage || "").trim();
   const nextLastOutboundMessageId = String(lastOutboundMessageId || "").trim();
   const nextLastOutboundAt = lastOutboundAt || null;
 
-  if (!nextTaskId || !nextSourcePhone || !nextDestinationContactId || !nextDestinationPhone) {
+  if (!nextTaskId || !nextSourcePhone) {
+    throw new Error("No se pudo crear ruta de respuesta por datos incompletos.");
+  }
+  if (nextRoutingEnabled && (!nextDestinationContactId || !nextDestinationPhone)) {
     throw new Error("No se pudo crear ruta de respuesta por datos incompletos.");
   }
 
   const rows = await listRoutes();
   const now = new Date().toISOString();
 
-  let found = false;
-  let upsertedRouteId = "";
-  const updated = rows.map((row) => {
-    if (row.taskId !== nextTaskId || row.sourcePhone !== nextSourcePhone) return row;
-    found = true;
-    upsertedRouteId = row.id;
-    return {
-      ...row,
-      destinationContactId: nextDestinationContactId,
-      destinationPhone: nextDestinationPhone,
-      originalMessage: nextOriginalMessage,
-      lastOutboundMessageId: nextLastOutboundMessageId,
-      lastOutboundAt: nextLastOutboundAt,
-      enabled: true,
-      updatedAt: now,
-    };
-  });
-
-  if (!found) {
-    upsertedRouteId = randomUUID();
-    updated.push({
+  const upsertedRouteId = randomUUID();
+  const updated = [
+    ...rows,
+    {
       id: upsertedRouteId,
       taskId: nextTaskId,
       sourcePhone: nextSourcePhone,
-      destinationContactId: nextDestinationContactId,
-      destinationPhone: nextDestinationPhone,
+      destinationContactId: nextRoutingEnabled ? nextDestinationContactId : "",
+      destinationPhone: nextRoutingEnabled ? nextDestinationPhone : "",
+      routingEnabled: nextRoutingEnabled,
       originalMessage: nextOriginalMessage,
       lastOutboundMessageId: nextLastOutboundMessageId,
       lastOutboundAt: nextLastOutboundAt,
       enabled: true,
       createdAt: now,
       updatedAt: now,
-    });
-  }
-
-  // Mantener una sola ruta activa por origen+destino para evitar cruces de contexto.
-  for (let i = 0; i < updated.length; i += 1) {
-    const row = updated[i];
-    if (
-      row.id !== upsertedRouteId
-      && row.sourcePhone === nextSourcePhone
-      && row.destinationPhone === nextDestinationPhone
-      && row.enabled
-    ) {
-      updated[i] = {
-        ...row,
-        enabled: false,
-        updatedAt: now,
-      };
-    }
-  }
+    },
+  ];
 
   await saveAll(updated);
   return updated.find((row) => row.id === upsertedRouteId) || null;
@@ -164,6 +135,11 @@ function dedupByDestinationLatest(rows) {
   return Array.from(dedup.values());
 }
 
+function getRouteEventTimeMs(row) {
+  const at = new Date(row.lastOutboundAt || row.updatedAt || row.createdAt || 0).getTime();
+  return Number.isFinite(at) ? at : 0;
+}
+
 async function findRoutesForIncoming({
   sourcePhone,
   quotedMessageId,
@@ -174,14 +150,21 @@ async function findRoutesForIncoming({
     return { routes: [], strategy: "none" };
   }
 
+  const sortedActive = active
+    .slice()
+    .sort((a, b) => getRouteEventTimeMs(b) - getRouteEventTimeMs(a));
+
   const quotedId = String(quotedMessageId || "").trim();
   if (quotedId) {
-    const byQuoted = active.filter(
+    const byQuoted = sortedActive.find(
       (row) => String(row.lastOutboundMessageId || "").trim() === quotedId
     );
-    if (byQuoted.length > 0) {
+    if (byQuoted) {
+      if (!byQuoted.routingEnabled || !byQuoted.destinationPhone || !byQuoted.destinationContactId) {
+        return { routes: [], strategy: "quoted_routing_disabled" };
+      }
       return {
-        routes: dedupByDestinationLatest(byQuoted),
+        routes: [byQuoted],
         strategy: "quoted_message_id",
       };
     }
@@ -193,16 +176,20 @@ async function findRoutesForIncoming({
   const hours = Number.parseInt(String(maxAgeHours), 10);
   const ttlHours = Number.isFinite(hours) && hours > 0 ? hours : 24;
   const cutoffMs = Date.now() - ttlHours * 60 * 60 * 1000;
-  const byRecency = active.filter((row) => {
-    const at = new Date(row.updatedAt || row.lastOutboundAt || 0).getTime();
-    return Number.isFinite(at) && at >= cutoffMs;
+  const byRecency = sortedActive.filter((row) => {
+    const at = getRouteEventTimeMs(row);
+    return at >= cutoffMs;
   });
   if (byRecency.length === 0) {
     return { routes: [], strategy: "recency_no_match" };
   }
+  const latest = byRecency[0];
+  if (!latest.routingEnabled || !latest.destinationPhone || !latest.destinationContactId) {
+    return { routes: [], strategy: "latest_message_no_routing" };
+  }
   return {
-    routes: dedupByDestinationLatest(byRecency),
-    strategy: "recency",
+    routes: [latest],
+    strategy: "latest_message",
   };
 }
 

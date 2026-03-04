@@ -986,6 +986,16 @@ async function executeSendWhatsAppAction(task, action, context, resolvedContact)
       sourcePhone: contactTarget,
       destinationContactId: destination.id,
       destinationPhone: destinationTarget,
+      routingEnabled: true,
+      originalMessage: finalMessage,
+      lastOutboundMessageId: String(sendResult && sendResult.messageId ? sendResult.messageId : ""),
+      lastOutboundAt: new Date().toISOString(),
+    });
+  } else if (task && task.replyRoutingMode === "none") {
+    await taskReplyRoutesService.upsertRouteForTask({
+      taskId: task.id,
+      sourcePhone: contactTarget,
+      routingEnabled: false,
       originalMessage: finalMessage,
       lastOutboundMessageId: String(sendResult && sendResult.messageId ? sendResult.messageId : ""),
       lastOutboundAt: new Date().toISOString(),

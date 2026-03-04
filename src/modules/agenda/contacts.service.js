@@ -205,7 +205,11 @@ async function deleteContact(contactId) {
   }
 
   const inRoutes = (routes || []).some(
-    (row) => String(row && row.destinationContactId) === targetId
+    (row) =>
+      String(row && row.destinationContactId) === targetId
+      && row
+      && row.enabled !== false
+      && row.routingEnabled !== false
   );
   if (inRoutes) {
     throw new Error("No se puede eliminar: el contacto tiene ruteos de respuesta activos.");
