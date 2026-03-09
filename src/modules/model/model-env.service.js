@@ -25,25 +25,51 @@ async function writeEnvLines(lines) {
 
 async function getKeyValue(key) {
   const lines = await readEnvLines();
+  let foundInFile = false;
+  let fileValue = "";
   for (const line of lines) {
     const parsed = parseEnvLine(line);
-    if (parsed && parsed.key === key) return parsed.value;
+    if (parsed && parsed.key === key) {
+      foundInFile = true;
+      fileValue = parsed.value;
+      break;
+    }
+  }
+  if (foundInFile) {
+    const normalized = String(fileValue || "").trim();
+    if (normalized) return fileValue;
   }
   return String(process.env[key] || "");
 }
 
 async function upsertKey(key, value = "") {
   const lines = await readEnvLines();
+  const nextValue = String(value || "");
   let found = false;
   const next = lines.map((line) => {
     const parsed = parseEnvLine(line);
     if (parsed && parsed.key === key) {
       found = true;
-      return `${key}=${value}`;
+      const currentValue = String(parsed.value || "");
+      const currentHasValue = currentValue.trim().length > 0;
+      const nextHasValue = nextValue.trim().length > 0;
+
+      // Evita pisar una clave ya cargada con valor por un update vacio.
+      if (!nextHasValue && currentHasValue) {
+        return line;
+      }
+      return `${key}=${nextValue}`;
     }
     return line;
   });
-  if (!found) next.push(`${key}=${value}`);
+  if (!found) {
+    // Si no hay valor para guardar, no crear una entrada vacia en .env.
+    if (nextValue.trim().length > 0) {
+      next.push(`${key}=${nextValue}`);
+    } else {
+      return;
+    }
+  }
   await writeEnvLines(next);
 }
 
