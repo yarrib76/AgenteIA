@@ -258,12 +258,13 @@ function buildActionContractPrompt({ allowApiActions = false } = {}) {
     return [
       "Responde SOLO en JSON valido, sin markdown.",
       "Esquema de salida:",
-      '{"result_summary":"texto", "actions":[{"type":"call_external_api","integrationId":"id_integracion","query":{},"body":{}},{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}] }',
+      '{"result_summary":"texto", "actions":[{"type":"call_external_api","integrationId":"id_integracion","query":{},"body":{},"evidence":{"source":"texto","reason":"texto"}},{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}] }',
       "Si no hay accion, enviar actions: [].",
       "Usa call_external_api solo cuando necesites consultar APIs externas.",
       "Si la accion es send_whatsapp, el campo message debe comenzar exactamente con el detalle del rol del agente.",
       "Si hay lista de contactos disponible, prioriza devolver contactId.",
       "Si hay lista de integraciones disponible, prioriza devolver integrationId.",
+      "Cada accion debe incluir evidence breve y verificable usando SOLO datos del input.",
       "No inventes contactos inexistentes.",
     ].join("\n");
   }
@@ -271,10 +272,11 @@ function buildActionContractPrompt({ allowApiActions = false } = {}) {
   return [
     "Responde SOLO en JSON valido, sin markdown.",
     "Esquema de salida:",
-    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}] }',
+    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}] }',
     "Si no hay accion, enviar actions: [].",
     "Si la accion es send_whatsapp, el campo message debe comenzar exactamente con el detalle del rol del agente.",
     "Si hay lista de contactos disponible, prioriza devolver contactId.",
+    "Cada accion debe incluir evidence breve y verificable usando SOLO datos del input.",
     "No inventes contactos inexistentes.",
   ].join("\n");
 }
@@ -301,7 +303,7 @@ function buildForceWhatsAppRetryPrompt({
     "Si hay lista de contactos, devuelve contactId para evitar ambiguedad.",
     "No devuelvas call_external_api en este reintento.",
     "Esquema estricto:",
-    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}]}',
+    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}]}',
     lastResultSummary
       ? `Resultado previo disponible: ${String(lastResultSummary)}`
       : "",
@@ -889,8 +891,9 @@ function buildApiResultsFollowupPrompt({
     "",
     "Ahora responde SOLO con acciones finales para ejecutar.",
     "No devuelvas call_external_api nuevamente en este paso.",
+    "Cada accion debe incluir evidence breve y verificable usando SOLO datos del input.",
     "Esquema:",
-    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto"}]}',
+    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}]}',
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -967,41 +970,93 @@ function collectRowsFromApiResults(apiResults) {
   return collected;
 }
 
-function isYesValue(value) {
-  return normalizeCompareText(value) === "si";
-}
-
-function hasHappyFaceNote(rawNotes) {
-  const notes = normalizeText(rawNotes).toLowerCase();
-  if (!notes) return false;
-  return /(:\)|:-\)|😀|😃|😄|🙂|😊|☺|carita feliz)/i.test(notes);
-}
-
-function buildOverdueReminderMessage(contactName, rows) {
-  const name = normalizeText(contactName) || "Vendedora";
-  const orderRows = Array.isArray(rows) ? rows : [];
-  const lines = orderRows
-    .map((row) => {
-      const orderNumber = row && row.numero_pedido != null ? String(row.numero_pedido) : "";
-      const customer = normalizeText(row && row.cliente);
-      if (orderNumber && customer) return `- Pedido ${orderNumber} (cliente: ${customer})`;
-      if (orderNumber) return `- Pedido ${orderNumber}`;
-      return "";
+function findMatchingContactIdsForVendorName(contacts, vendorName) {
+  const vendorKey = normalizeCompareText(vendorName);
+  if (!vendorKey) return [];
+  const rows = Array.isArray(contacts) ? contacts : [];
+  return rows
+    .filter((contact) => String(contact.type || "contact") === "contact")
+    .filter((contact) => {
+      const contactKey = normalizeCompareText(contact.name);
+      return Boolean(
+        contactKey
+          && (contactKey === vendorKey || contactKey.includes(vendorKey) || vendorKey.includes(contactKey))
+      );
     })
-    .filter(Boolean);
-  const includeHappyFaceNote = orderRows.some((row) => hasHappyFaceNote(row && row.notas));
-  const suffix = includeHappyFaceNote
-    ? "\n\nEn la nota del pedido agrega que ya realizó el pago."
-    : "";
-  return [
-    `Hola ${name}, tenés pedidos vencidos pendientes de pago:`,
-    lines.join("\n"),
-    "",
-    "Hoy debés realizar el reclamo de pago correspondiente e informar a Yamil cuando lo hagas.",
-  ]
-    .filter(Boolean)
-    .join("\n")
-    .concat(suffix);
+    .map((contact) => contact.id);
+}
+
+function collectEvidenceWarnings(actions, apiRows, contacts) {
+  const warnings = [];
+  const normalizedActions = Array.isArray(actions) ? actions : [];
+  for (let i = 0; i < normalizedActions.length; i += 1) {
+    const action = normalizedActions[i] || {};
+    const type = normalizeText(action.type).toLowerCase();
+    if (type !== "send_whatsapp") continue;
+    const evidence = normalizeActionObject(action.evidence);
+    if (Object.keys(evidence).length === 0) {
+      warnings.push({
+        code: "missing_action_evidence",
+        actionIndex: i,
+      });
+      continue;
+    }
+    const rows = Array.isArray(evidence.rows) ? evidence.rows : [];
+    for (const row of rows) {
+      const orderNumber = row && row.numero_pedido != null ? Number(row.numero_pedido) : null;
+      if (orderNumber == null) continue;
+      const matchedRow = apiRows.find((item) => Number(item && item.numero_pedido) === orderNumber);
+      if (!matchedRow) {
+        warnings.push({
+          code: "evidence_row_not_found",
+          actionIndex: i,
+          numero_pedido: orderNumber,
+        });
+        continue;
+      }
+      const evidenceVendor = normalizeCompareText(row && row.vendedora);
+      const actualVendor = normalizeCompareText(matchedRow && matchedRow.vendedora);
+      if (evidenceVendor && actualVendor && evidenceVendor !== actualVendor) {
+        warnings.push({
+          code: "evidence_vendor_mismatch",
+          actionIndex: i,
+          numero_pedido: orderNumber,
+          expectedVendor: matchedRow.vendedora || null,
+          evidenceVendor: row.vendedora || null,
+        });
+      }
+    }
+  }
+
+  const byVendor = new Map();
+  for (const row of apiRows) {
+    const vendorName = normalizeText(row && (row.vendedora || row.vendedor || row.seller || row.vendor));
+    if (!vendorName) continue;
+    const key = normalizeCompareText(vendorName);
+    if (!byVendor.has(key)) {
+      byVendor.set(key, {
+        vendorName,
+        orderNumbers: [],
+      });
+    }
+    const bucket = byVendor.get(key);
+    if (row && row.numero_pedido != null) {
+      bucket.orderNumbers.push(row.numero_pedido);
+    }
+  }
+
+  for (const item of byVendor.values()) {
+    const matches = findMatchingContactIdsForVendorName(contacts, item.vendorName);
+    if (matches.length === 0) {
+      warnings.push({
+        code: "api_vendor_without_contact_reference",
+        vendorName: item.vendorName,
+        orders: item.orderNumbers,
+      });
+    }
+  }
+
+  return warnings;
 }
 
 async function applyGlobalGuardrails({
@@ -1015,8 +1070,8 @@ async function applyGlobalGuardrails({
   const contacts = Array.isArray(availableContacts) ? availableContacts : [];
   const allowedGroupContactIds = new Set(normalizeIdList(task && task.allowedGroupContactIds));
   const sourceActions = Array.isArray(parsed && parsed.actions) ? parsed.actions : [];
+  const apiRows = collectRowsFromApiResults(apiResults);
   const keptActions = [];
-  const ensuredContactIds = new Set();
 
   for (let i = 0; i < sourceActions.length; i += 1) {
     const action = sourceActions[i] || {};
@@ -1049,7 +1104,6 @@ async function applyGlobalGuardrails({
       continue;
     }
 
-    ensuredContactIds.add(resolvedContact.id);
     keptActions.push({
       ...action,
       contactId: resolvedContact.id,
@@ -1073,50 +1127,7 @@ async function applyGlobalGuardrails({
     };
   }
 
-  const apiRows = collectRowsFromApiResults(apiResults);
-  const overdueRows = apiRows.filter((row) => isYesValue(row && row.vencida));
-  if (overdueRows.length > 0) {
-    const vendorNameKeys = new Set(
-      overdueRows
-        .map((row) => normalizeCompareText(row && row.vendedora))
-        .filter(Boolean)
-    );
-    const expectedContactIds = buildAllowedContactIdsByVendorNames(contacts, vendorNameKeys);
-    if (expectedContactIds.size === 0) {
-      warnings.push({
-        code: "overdue_without_resolvable_vendor_contact",
-        overdueOrders: overdueRows.length,
-      });
-    }
-
-    for (const contactId of expectedContactIds) {
-      if (ensuredContactIds.has(contactId)) continue;
-      const contact = contacts.find((item) => item.id === contactId);
-      if (!contact) continue;
-      const contactKey = normalizeCompareText(contact.name);
-      const matchedRows = overdueRows.filter((row) => {
-        const vendorKey = normalizeCompareText(row && row.vendedora);
-        if (!vendorKey || !contactKey) return false;
-        return vendorKey === contactKey || vendorKey.includes(contactKey) || contactKey.includes(vendorKey);
-      });
-      if (matchedRows.length === 0) continue;
-      keptActions.push({
-        type: "send_whatsapp",
-        contactId: contact.id,
-        contact: contact.name,
-        message: buildOverdueReminderMessage(contact.name, matchedRows),
-      });
-      ensuredContactIds.add(contact.id);
-      warnings.push({
-        code: "overdue_missing_action_autocorrected",
-        contactId: contact.id,
-        contactName: contact.name,
-        orders: matchedRows
-          .map((row) => (row && row.numero_pedido != null ? row.numero_pedido : null))
-          .filter((value) => value != null),
-      });
-    }
-  }
+  warnings.push(...collectEvidenceWarnings(keptActions, apiRows, contacts));
 
   return {
     parsed: {
@@ -1250,7 +1261,15 @@ async function executeActions(task, parsed, context) {
         }
       }
       const result = await executeSendWhatsAppAction(task, action, context, resolvedContact);
-      results.push({ index: i, type, result, ok: true });
+      results.push({
+        index: i,
+        type,
+        result: {
+          ...result,
+          evidence: normalizeActionObject(action.evidence),
+        },
+        ok: true,
+      });
       continue;
     }
 
