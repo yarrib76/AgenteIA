@@ -970,6 +970,89 @@ function collectRowsFromApiResults(apiResults) {
   return collected;
 }
 
+function isYesValue(value) {
+  return normalizeCompareText(value) === "si";
+}
+
+function isNoValue(value) {
+  return normalizeCompareText(value) === "no";
+}
+
+function hasAnyNotes(rawNotes) {
+  return normalizeText(rawNotes).length > 0;
+}
+
+function hasHappyFaceNote(rawNotes) {
+  const notes = normalizeText(rawNotes).toLowerCase();
+  if (!notes) return false;
+  return /(:\)|:-\)|😀|😃|😄|🙂|😊|☺|carita feliz)/i.test(notes);
+}
+
+function buildOverdueReminderMessage(contactName, rows) {
+  const name = normalizeText(contactName) || "Vendedora";
+  const orderRows = Array.isArray(rows) ? rows : [];
+  const lines = orderRows
+    .map((row) => {
+      const orderNumber = row && row.numero_pedido != null ? String(row.numero_pedido) : "";
+      const customer = normalizeText(row && row.cliente);
+      if (orderNumber && customer) return `- Pedido ${orderNumber} (cliente: ${customer})`;
+      if (orderNumber) return `- Pedido ${orderNumber}`;
+      return "";
+    })
+    .filter(Boolean);
+  const includeHappyFaceNote = orderRows.some((row) => hasHappyFaceNote(row && row.notas));
+  const suffix = includeHappyFaceNote
+    ? "\n\nEn la nota del pedido agrega que ya realizó el pago."
+    : "";
+  return [
+    `Hola ${name}, tenés pedidos vencidos pendientes de pago:`,
+    lines.join("\n"),
+    "Hoy debés realizar el reclamo de pago correspondiente e informar a Yamil cuando lo hagas.",
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .concat(suffix);
+}
+
+function buildMissingPaymentNoteMessage(contactName, rows) {
+  const name = normalizeText(contactName) || "Vendedora";
+  const details = (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      const orderNumber = row && row.numero_pedido != null ? String(row.numero_pedido) : "";
+      const customer = normalizeText(row && row.cliente);
+      if (orderNumber && customer) return `${orderNumber} (${customer})`;
+      if (orderNumber) return orderNumber;
+      return "";
+    })
+    .filter(Boolean);
+  const prefix =
+    details.length > 1
+      ? `Hola ${name}. Los pedidos pendientes deben tener nota de reclamo de pago.`
+      : `Hola ${name}. El pedido pendiente debe tener nota de reclamo de pago.`;
+  const suffix = details.length > 0 ? `Pedidos: ${details.join(", ")}.` : "";
+  return [prefix, suffix].filter(Boolean).join(" ");
+}
+
+function isPendingPaymentsTask(task) {
+  const text = [
+    task && task.taskPromptTemplate,
+    task && task.taskInput,
+    task && task.mergedPrompt,
+  ]
+    .map((value) => normalizeCompareText(value))
+    .join(" ");
+  return (
+    text.includes('si vencida = "si"')
+    || text.includes("si vencida = si")
+  ) && text.includes("nota de reclamo de pago");
+}
+
+function classifyPendingPaymentsRow(row) {
+  if (isYesValue(row && row.vencida)) return "overdue";
+  if (isNoValue(row && row.vencida) && !hasAnyNotes(row && row.notas)) return "missing_note";
+  return "none";
+}
+
 function findMatchingContactIdsForVendorName(contacts, vendorName) {
   const vendorKey = normalizeCompareText(vendorName);
   if (!vendorKey) return [];
@@ -1059,6 +1142,209 @@ function collectEvidenceWarnings(actions, apiRows, contacts) {
   return warnings;
 }
 
+function buildPendingPaymentsRequirements(apiRows, contacts) {
+  const requirementsByContactId = new Map();
+  const unresolvedVendors = [];
+  const groupedByVendor = new Map();
+
+  for (const row of Array.isArray(apiRows) ? apiRows : []) {
+    const classification = classifyPendingPaymentsRow(row);
+    if (classification === "none") continue;
+    const vendorName = normalizeText(row && row.vendedora);
+    const vendorKey = normalizeCompareText(vendorName);
+    if (!vendorKey) continue;
+    if (!groupedByVendor.has(vendorKey)) {
+      groupedByVendor.set(vendorKey, {
+        vendorName,
+        overdueRows: [],
+        missingNoteRows: [],
+      });
+    }
+    const bucket = groupedByVendor.get(vendorKey);
+    if (classification === "overdue") bucket.overdueRows.push(row);
+    if (classification === "missing_note") bucket.missingNoteRows.push(row);
+  }
+
+  for (const bucket of groupedByVendor.values()) {
+    const matches = findMatchingContactIdsForVendorName(contacts, bucket.vendorName);
+    if (matches.length === 0) {
+      unresolvedVendors.push({
+        vendorName: bucket.vendorName,
+        orders: [...bucket.overdueRows, ...bucket.missingNoteRows]
+          .map((row) => row && row.numero_pedido)
+          .filter((value) => value != null),
+      });
+      continue;
+    }
+    for (const contactId of matches) {
+      const contact = contacts.find((item) => item.id === contactId);
+      if (!contact) continue;
+      requirementsByContactId.set(contactId, {
+        contact,
+        overdueRows: bucket.overdueRows.slice(),
+        missingNoteRows: bucket.missingNoteRows.slice(),
+      });
+    }
+  }
+
+  return { requirementsByContactId, unresolvedVendors };
+}
+
+function normalizeEvidenceRows(action, apiRows) {
+  const evidence = normalizeActionObject(action.evidence);
+  const rawRows = Array.isArray(evidence.rows) ? evidence.rows : [];
+  const matchedRows = [];
+  for (const row of rawRows) {
+    const orderNumber = row && row.numero_pedido != null ? Number(row.numero_pedido) : null;
+    if (!Number.isFinite(orderNumber)) continue;
+    const matched = apiRows.find((item) => Number(item && item.numero_pedido) === orderNumber);
+    if (matched) matchedRows.push(matched);
+  }
+  return matchedRows;
+}
+
+async function applyPendingPaymentsConsistency({
+  actions,
+  apiRows,
+  contacts,
+}) {
+  const warnings = [];
+  const validActions = [];
+  const coveredKinds = new Set();
+  const { requirementsByContactId, unresolvedVendors } = buildPendingPaymentsRequirements(apiRows, contacts);
+
+  for (const unresolved of unresolvedVendors) {
+    warnings.push({
+      code: "required_vendor_without_resolvable_contact",
+      vendorName: unresolved.vendorName,
+      orders: unresolved.orders,
+    });
+  }
+
+  for (let i = 0; i < actions.length; i += 1) {
+    const action = actions[i] || {};
+    const type = normalizeText(action.type).toLowerCase();
+    if (type !== "send_whatsapp") {
+      validActions.push(action);
+      continue;
+    }
+    const contactId = normalizeText(action.contactId);
+    const evidenceRows = normalizeEvidenceRows(action, apiRows);
+    if (evidenceRows.length === 0) {
+      warnings.push({
+        code: "pending_payments_action_without_matching_rows_skipped",
+        actionIndex: i,
+        contactId: contactId || null,
+      });
+      continue;
+    }
+
+    const classifications = new Set(evidenceRows.map((row) => classifyPendingPaymentsRow(row)));
+    classifications.delete("none");
+    if (classifications.size !== 1) {
+      warnings.push({
+        code: "pending_payments_mixed_or_invalid_rows_skipped",
+        actionIndex: i,
+        contactId: contactId || null,
+        orders: evidenceRows.map((row) => row.numero_pedido),
+      });
+      continue;
+    }
+
+    const kind = Array.from(classifications)[0];
+    if (!kind) {
+      warnings.push({
+        code: "pending_payments_non_actionable_rows_skipped",
+        actionIndex: i,
+        contactId: contactId || null,
+        orders: evidenceRows.map((row) => row.numero_pedido),
+      });
+      continue;
+    }
+
+    const requirement = requirementsByContactId.get(contactId);
+    if (!requirement) {
+      warnings.push({
+        code: "pending_payments_contact_without_requirement_skipped",
+        actionIndex: i,
+        contactId: contactId || null,
+        orders: evidenceRows.map((row) => row.numero_pedido),
+      });
+      continue;
+    }
+
+    const vendorOrders = (kind === "overdue" ? requirement.overdueRows : requirement.missingNoteRows)
+      .map((row) => Number(row.numero_pedido));
+    const evidenceOrders = evidenceRows.map((row) => Number(row.numero_pedido));
+    const allOrdersMatch = evidenceOrders.every((order) => vendorOrders.includes(order));
+    if (!allOrdersMatch) {
+      warnings.push({
+        code: "pending_payments_evidence_not_allowed_for_contact_skipped",
+        actionIndex: i,
+        contactId: contactId || null,
+        orders: evidenceOrders,
+      });
+      continue;
+    }
+
+    coveredKinds.add(`${kind}:${contactId}`);
+    validActions.push(action);
+  }
+
+  for (const [contactId, requirement] of requirementsByContactId.entries()) {
+    if (requirement.overdueRows.length > 0 && !coveredKinds.has(`overdue:${contactId}`)) {
+      validActions.push({
+        type: "send_whatsapp",
+        contactId,
+        contact: requirement.contact.name,
+        message: buildOverdueReminderMessage(requirement.contact.name, requirement.overdueRows),
+        evidence: {
+          source: "backend_pending_payments_consistency",
+          reason: "Autocorrección: faltaba accion para pedidos vencidos.",
+          rows: requirement.overdueRows.map((row) => ({
+            numero_pedido: row.numero_pedido,
+            vendedora: row.vendedora,
+            vencida: row.vencida,
+            notas_presentes: hasAnyNotes(row.notas),
+          })),
+        },
+      });
+      warnings.push({
+        code: "overdue_missing_action_autocorrected",
+        contactId,
+        contactName: requirement.contact.name,
+        orders: requirement.overdueRows.map((row) => row.numero_pedido),
+      });
+    }
+    if (requirement.missingNoteRows.length > 0 && !coveredKinds.has(`missing_note:${contactId}`)) {
+      validActions.push({
+        type: "send_whatsapp",
+        contactId,
+        contact: requirement.contact.name,
+        message: buildMissingPaymentNoteMessage(requirement.contact.name, requirement.missingNoteRows),
+        evidence: {
+          source: "backend_pending_payments_consistency",
+          reason: "Autocorrección: faltaba accion para pedidos sin nota de reclamo.",
+          rows: requirement.missingNoteRows.map((row) => ({
+            numero_pedido: row.numero_pedido,
+            vendedora: row.vendedora,
+            vencida: row.vencida,
+            notas_presentes: hasAnyNotes(row.notas),
+          })),
+        },
+      });
+      warnings.push({
+        code: "missing_note_action_autocorrected",
+        contactId,
+        contactName: requirement.contact.name,
+        orders: requirement.missingNoteRows.map((row) => row.numero_pedido),
+      });
+    }
+  }
+
+  return { actions: validActions, warnings };
+}
+
 async function applyGlobalGuardrails({
   task,
   parsed,
@@ -1128,6 +1414,17 @@ async function applyGlobalGuardrails({
   }
 
   warnings.push(...collectEvidenceWarnings(keptActions, apiRows, contacts));
+
+  if (isPendingPaymentsTask(task)) {
+    const consistency = await applyPendingPaymentsConsistency({
+      actions: keptActions,
+      apiRows,
+      contacts,
+    });
+    keptActions.length = 0;
+    keptActions.push(...consistency.actions);
+    warnings.push(...consistency.warnings);
+  }
 
   return {
     parsed: {
