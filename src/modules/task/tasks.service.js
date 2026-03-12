@@ -953,6 +953,180 @@ function buildAllowedContactIdsByVendorNames(contacts, vendorNameKeys) {
   return allowed;
 }
 
+function collectRowsFromApiResults(apiResults) {
+  const collected = [];
+  const rows = Array.isArray(apiResults) ? apiResults : [];
+  for (const item of rows) {
+    const result = item && item.result ? item.result : {};
+    const payload = result.responseJson || {};
+    const dataRows = Array.isArray(payload.rows) ? payload.rows : [];
+    for (const row of dataRows) {
+      if (row && typeof row === "object") collected.push(row);
+    }
+  }
+  return collected;
+}
+
+function isYesValue(value) {
+  return normalizeCompareText(value) === "si";
+}
+
+function hasHappyFaceNote(rawNotes) {
+  const notes = normalizeText(rawNotes).toLowerCase();
+  if (!notes) return false;
+  return /(:\)|:-\)|😀|😃|😄|🙂|😊|☺|carita feliz)/i.test(notes);
+}
+
+function buildOverdueReminderMessage(contactName, rows) {
+  const name = normalizeText(contactName) || "Vendedora";
+  const orderRows = Array.isArray(rows) ? rows : [];
+  const lines = orderRows
+    .map((row) => {
+      const orderNumber = row && row.numero_pedido != null ? String(row.numero_pedido) : "";
+      const customer = normalizeText(row && row.cliente);
+      if (orderNumber && customer) return `- Pedido ${orderNumber} (cliente: ${customer})`;
+      if (orderNumber) return `- Pedido ${orderNumber}`;
+      return "";
+    })
+    .filter(Boolean);
+  const includeHappyFaceNote = orderRows.some((row) => hasHappyFaceNote(row && row.notas));
+  const suffix = includeHappyFaceNote
+    ? "\n\nEn la nota del pedido agrega que ya realizó el pago."
+    : "";
+  return [
+    `Hola ${name}, tenés pedidos vencidos pendientes de pago:`,
+    lines.join("\n"),
+    "",
+    "Hoy debés realizar el reclamo de pago correspondiente e informar a Yamil cuando lo hagas.",
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .concat(suffix);
+}
+
+async function applyGlobalGuardrails({
+  task,
+  parsed,
+  availableContacts,
+  apiResults,
+  allowNoWhatsappOnNoData,
+}) {
+  const warnings = [];
+  const contacts = Array.isArray(availableContacts) ? availableContacts : [];
+  const allowedGroupContactIds = new Set(normalizeIdList(task && task.allowedGroupContactIds));
+  const sourceActions = Array.isArray(parsed && parsed.actions) ? parsed.actions : [];
+  const keptActions = [];
+  const ensuredContactIds = new Set();
+
+  for (let i = 0; i < sourceActions.length; i += 1) {
+    const action = sourceActions[i] || {};
+    const type = normalizeText(action.type).toLowerCase();
+    if (type !== "send_whatsapp") {
+      keptActions.push(action);
+      continue;
+    }
+
+    let resolvedContact = null;
+    try {
+      resolvedContact = await resolveContactFromAction(action);
+    } catch (error) {
+      warnings.push({
+        code: "unknown_contact_skipped",
+        actionIndex: i,
+        reason: error.message,
+      });
+      continue;
+    }
+
+    const isGroup = String(resolvedContact.type || "contact") === "group";
+    if (isGroup && !allowedGroupContactIds.has(resolvedContact.id)) {
+      warnings.push({
+        code: "group_not_allowed_skipped",
+        actionIndex: i,
+        contactId: resolvedContact.id,
+        contactName: resolvedContact.name,
+      });
+      continue;
+    }
+
+    ensuredContactIds.add(resolvedContact.id);
+    keptActions.push({
+      ...action,
+      contactId: resolvedContact.id,
+      contact: normalizeText(action.contact) || resolvedContact.name,
+    });
+  }
+
+  if (allowNoWhatsappOnNoData) {
+    if (keptActions.length > 0) {
+      warnings.push({
+        code: "no_data_actions_cleared",
+        removedActions: keptActions.length,
+      });
+    }
+    return {
+      parsed: {
+        ...(parsed || {}),
+        actions: [],
+      },
+      warnings,
+    };
+  }
+
+  const apiRows = collectRowsFromApiResults(apiResults);
+  const overdueRows = apiRows.filter((row) => isYesValue(row && row.vencida));
+  if (overdueRows.length > 0) {
+    const vendorNameKeys = new Set(
+      overdueRows
+        .map((row) => normalizeCompareText(row && row.vendedora))
+        .filter(Boolean)
+    );
+    const expectedContactIds = buildAllowedContactIdsByVendorNames(contacts, vendorNameKeys);
+    if (expectedContactIds.size === 0) {
+      warnings.push({
+        code: "overdue_without_resolvable_vendor_contact",
+        overdueOrders: overdueRows.length,
+      });
+    }
+
+    for (const contactId of expectedContactIds) {
+      if (ensuredContactIds.has(contactId)) continue;
+      const contact = contacts.find((item) => item.id === contactId);
+      if (!contact) continue;
+      const contactKey = normalizeCompareText(contact.name);
+      const matchedRows = overdueRows.filter((row) => {
+        const vendorKey = normalizeCompareText(row && row.vendedora);
+        if (!vendorKey || !contactKey) return false;
+        return vendorKey === contactKey || vendorKey.includes(contactKey) || contactKey.includes(vendorKey);
+      });
+      if (matchedRows.length === 0) continue;
+      keptActions.push({
+        type: "send_whatsapp",
+        contactId: contact.id,
+        contact: contact.name,
+        message: buildOverdueReminderMessage(contact.name, matchedRows),
+      });
+      ensuredContactIds.add(contact.id);
+      warnings.push({
+        code: "overdue_missing_action_autocorrected",
+        contactId: contact.id,
+        contactName: contact.name,
+        orders: matchedRows
+          .map((row) => (row && row.numero_pedido != null ? row.numero_pedido : null))
+          .filter((value) => value != null),
+      });
+    }
+  }
+
+  return {
+    parsed: {
+      ...(parsed || {}),
+      actions: keptActions,
+    },
+    warnings,
+  };
+}
+
 async function executeSendWhatsAppAction(task, action, context, resolvedContact) {
   const contact = resolvedContact || (await resolveContactFromAction(action));
   const contactTarget = contactsService.getContactMessageTarget(contact);
@@ -1219,6 +1393,7 @@ async function executeTask(taskId, options = {}) {
     let outputForRaw = "";
     let actionPolicy = null;
     let allowNoWhatsappOnNoData = false;
+    let apiResultsForGuardrails = [];
 
     if (hasConfiguredIntegration) {
       task = appendLog(
@@ -1241,7 +1416,7 @@ async function executeTask(taskId, options = {}) {
         query: {},
         body: {},
       });
-      const apiResults = [
+      apiResultsForGuardrails = [
         {
           index: 0,
           type: "call_external_api",
@@ -1249,7 +1424,7 @@ async function executeTask(taskId, options = {}) {
           result: apiResult,
         },
       ];
-      allowNoWhatsappOnNoData = hasNoDataInApiResults(apiResults);
+      allowNoWhatsappOnNoData = hasNoDataInApiResults(apiResultsForGuardrails);
 
       task = appendLog(task, "api_actions", "ok", "Acciones API ejecutadas", { count: 1 });
       task = appendLog(task, "api_action", "ok", "Resultado call_external_api", apiResult);
@@ -1259,7 +1434,7 @@ async function executeTask(taskId, options = {}) {
         runtimeFileContext: [todayContextText, runtimeFileContext].filter(Boolean).join("\n\n"),
         contactsReferenceText,
         integrationsReferenceText,
-        apiResults,
+        apiResults: apiResultsForGuardrails,
       });
       task = appendLog(task, "prompt_followup_prepared", "ok", "Prompt follow-up preparado", {
         promptLength: followupPrompt.length,
@@ -1294,7 +1469,7 @@ async function executeTask(taskId, options = {}) {
         actionsCount: Array.isArray(parsed.actions) ? parsed.actions.length : 0,
       });
 
-      const vendorNameKeys = extractVendorNamesFromApiResults(apiResults);
+      const vendorNameKeys = extractVendorNamesFromApiResults(apiResultsForGuardrails);
       if (vendorNameKeys.size > 0) {
         const allowedVendorContactIds = buildAllowedContactIdsByVendorNames(
           availableContacts,
@@ -1456,6 +1631,27 @@ async function executeTask(taskId, options = {}) {
         });
         parsed = retryParsed;
       }
+    }
+
+    const guardrailOutcome = await applyGlobalGuardrails({
+      task,
+      parsed,
+      availableContacts,
+      apiResults: apiResultsForGuardrails,
+      allowNoWhatsappOnNoData,
+    });
+    parsed = guardrailOutcome.parsed;
+    if (Array.isArray(guardrailOutcome.warnings) && guardrailOutcome.warnings.length > 0) {
+      task = appendLog(
+        task,
+        "guardrail_warning",
+        "ok",
+        "Auto-correcciones de guardrails globales aplicadas",
+        {
+          warningsCount: guardrailOutcome.warnings.length,
+          warnings: guardrailOutcome.warnings,
+        }
+      );
     }
 
     const actionResults = await executeActions(task, parsed, {
