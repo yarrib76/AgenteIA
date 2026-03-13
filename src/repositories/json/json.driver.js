@@ -13,6 +13,7 @@ function createJsonDriver() {
     files: path.join(process.cwd(), "data", "files.json"),
     taskReplyRoutes: path.join(process.cwd(), "data", "task_reply_routes.json"),
     apiIntegrations: path.join(process.cwd(), "data", "api_integrations.json"),
+    users: path.join(process.cwd(), "data", "users.json"),
   };
 
   return {
@@ -60,6 +61,10 @@ function createJsonDriver() {
     apiIntegrations: {
       list: () => readJson(files.apiIntegrations, []),
       saveAll: (rows) => writeJson(files.apiIntegrations, rows),
+    },
+    users: {
+      list: () => readJson(files.users, []),
+      saveAll: (rows) => writeJson(files.users, rows),
     },
   };
 }

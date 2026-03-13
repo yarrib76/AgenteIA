@@ -1,4 +1,5 @@
 const express = require("express");
+const authController = require("../controllers/auth.controller");
 const whatsappController = require("../controllers/whatsapp.controller");
 const agendaController = require("../controllers/agenda.controller");
 const chatController = require("../controllers/chat.controller");
@@ -7,11 +8,21 @@ const modelController = require("../controllers/model.controller");
 const taskController = require("../controllers/task.controller");
 const fileController = require("../controllers/file.controller");
 const integrationController = require("../controllers/integration.controller");
+const authService = require("../modules/auth/auth.service");
 
 const router = express.Router();
 
+router.get("/login", authController.renderLoginPage);
+router.post("/login", authController.login);
+router.get("/register", authService.ensureRegistrationAllowed, authController.renderRegisterPage);
+router.post("/register", authService.ensureRegistrationAllowed, authController.register);
+router.post("/logout", authController.logout);
+
+router.use(authService.ensureAuthenticated);
+
 router.get("/", whatsappController.renderDashboard);
 router.get("/whatsapp", whatsappController.renderDashboard);
+router.get("/usuarios/nuevo", authService.ensureRegistrationAllowed, authController.renderRegisterPage);
 router.get("/agenda", agendaController.renderAgendaPage);
 router.get("/chat", chatController.renderChatPage);
 router.get("/agente/nuevo", agentController.renderNewAgentPage);

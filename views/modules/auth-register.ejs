@@ -1,0 +1,46 @@
+<% const view = typeof authData !== 'undefined' ? authData : { currentUser, error, email, next, success, challenge }; %>
+<div class="auth-card">
+  <div>
+    <p class="auth-eyebrow"><%= view.currentUser ? 'Usuarios' : 'Onboarding' %></p>
+    <h2 class="auth-title"><%= view.currentUser ? 'Crear nuevo usuario' : 'Crear primer usuario' %></h2>
+    <p class="auth-copy">El email será el identificador de acceso. La contraseña se guarda encriptada localmente.</p>
+  </div>
+
+  <% if (view.error) { %>
+    <div class="auth-alert auth-alert-error"><%= view.error %></div>
+  <% } %>
+
+  <% if (view.success) { %>
+    <div class="auth-alert auth-alert-success"><%= view.success %></div>
+  <% } %>
+
+  <form class="auth-form" method="post" action="/register">
+    <input type="hidden" name="next" value="<%= view.next %>" />
+    <label class="field">
+      <span>Email</span>
+      <input type="email" name="email" value="<%= view.email %>" autocomplete="email" required />
+    </label>
+    <label class="field">
+      <span>Contraseña</span>
+      <input type="password" name="password" autocomplete="new-password" required />
+      <small class="field-hint">Mínimo 8 caracteres, con mayúsculas, minúsculas y números.</small>
+    </label>
+    <label class="field">
+      <span>Confirmar contraseña</span>
+      <input type="password" name="confirmPassword" autocomplete="new-password" required />
+    </label>
+    <label class="field">
+      <span>Captcha: resolvé <strong><%= view.challenge.prompt %></strong></span>
+      <input type="text" name="captchaAnswer" inputmode="numeric" required />
+    </label>
+    <button class="primary-button auth-submit" type="submit">Crear usuario</button>
+  </form>
+
+  <div class="auth-footer-links">
+    <% if (view.currentUser) { %>
+      <a href="/whatsapp">Volver al panel</a>
+    <% } else { %>
+      <a href="/login">Ya tengo usuario</a>
+    <% } %>
+  </div>
+</div>

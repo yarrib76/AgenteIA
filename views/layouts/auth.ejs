@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= pageTitle %></title>
+    <link rel="stylesheet" href="/css/main.css" />
+  </head>
+  <body class="auth-body">
+    <main class="auth-shell">
+      <section class="auth-hero">
+        <div class="auth-hero-badge">Acceso Seguro</div>
+        <h1>Agente IA</h1>
+        <p>
+          Panel operativo con autenticación local, sesiones seguras y alta controlada de usuarios.
+        </p>
+      </section>
+      <section class="auth-panel">
+        <%- include("../modules/" + authView, authData) %>
+      </section>
+    </main>
+  </body>
+</html>

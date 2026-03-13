@@ -39,6 +39,12 @@
             Gestionar Archivos
           </a>
           <div class="menu-group">
+            <div class="menu-group-title">Seguridad</div>
+            <a class="menu-subitem <%= activeMenu === 'users-new' ? 'active' : '' %>" href="/usuarios/nuevo">
+              Nuevo Usuario
+            </a>
+          </div>
+          <div class="menu-group">
             <div class="menu-group-title">Tareas</div>
             <a
               class="menu-subitem <%= activeMenu === 'tasks-new' ? 'active' : '' %>"
@@ -68,6 +74,12 @@
       <main class="content">
         <header class="content-header">
           <h1><%= headerTitle %></h1>
+          <div class="header-userbar">
+            <span class="header-useremail"><%= currentUser ? currentUser.email : '' %></span>
+            <form method="post" action="/logout">
+              <button class="secondary-button" type="submit">Salir</button>
+            </form>
+          </div>
         </header>
 
         <section>

@@ -1,0 +1,32 @@
+<div class="auth-card">
+  <div>
+    <p class="auth-eyebrow">Ingreso</p>
+    <h2 class="auth-title">Entrar al panel</h2>
+    <p class="auth-copy">Usá tu email y contraseña para acceder al backoffice.</p>
+  </div>
+
+  <% if (authData.error) { %>
+    <div class="auth-alert auth-alert-error"><%= authData.error %></div>
+  <% } %>
+
+  <% if (!authData.hasUsers) { %>
+    <div class="auth-alert">Todavía no existe ningún usuario. Creá el primero para habilitar el acceso.</div>
+  <% } %>
+
+  <form class="auth-form" method="post" action="/login">
+    <input type="hidden" name="next" value="<%= authData.next %>" />
+    <label class="field">
+      <span>Email</span>
+      <input type="email" name="email" value="<%= authData.email %>" autocomplete="email" required />
+    </label>
+    <label class="field">
+      <span>Contraseña</span>
+      <input type="password" name="password" autocomplete="current-password" required />
+    </label>
+    <button class="primary-button auth-submit" type="submit">Ingresar</button>
+  </form>
+
+  <div class="auth-footer-links">
+    <a href="/register">Crear usuario</a>
+  </div>
+</div>
