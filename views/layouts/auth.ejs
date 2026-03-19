@@ -9,14 +9,16 @@
   <body class="auth-body">
     <main class="auth-shell">
       <section class="auth-hero">
-        <div class="auth-hero-badge">Acceso Seguro</div>
-        <h1>Agente IA</h1>
-        <p>
-          Panel operativo con autenticación local, sesiones seguras y alta controlada de usuarios.
-        </p>
-      </section>
-      <section class="auth-panel">
-        <%- include("../modules/" + authView, authData) %>
+        <div class="auth-hero-copy">
+          <div class="auth-hero-badge">Acceso Seguro</div>
+          <h1>Agente IA</h1>
+          <p>
+            Panel operativo con autenticación local, sesiones seguras y alta controlada de usuarios.
+          </p>
+        </div>
+        <div class="auth-panel auth-panel-overlay">
+          <%- include("../modules/" + authView, authData) %>
+        </div>
       </section>
     </main>
   </body>

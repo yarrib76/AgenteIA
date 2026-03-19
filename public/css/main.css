@@ -435,10 +435,7 @@ body {
 
 .auth-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 480px);
-  gap: 28px;
-  align-items: stretch;
+  display: block;
   padding: 28px;
 }
 
@@ -454,11 +451,16 @@ body {
     linear-gradient(155deg, rgba(17, 24, 39, 0.96), rgba(29, 78, 216, 0.82)),
     linear-gradient(45deg, #111827, #0f766e);
   color: #f9fafb;
-  display: flex;
-  flex-direction: column;
-  justify-content: end;
+  position: relative;
   min-height: 520px;
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.18);
+}
+
+.auth-hero-copy {
+  position: absolute;
+  left: 42px;
+  bottom: 42px;
+  max-width: 30rem;
 }
 
 .auth-hero-badge {
@@ -494,6 +496,12 @@ body {
   justify-content: center;
 }
 
+.auth-panel-overlay {
+  position: absolute;
+  inset: 0;
+  padding: 32px;
+}
+
 .auth-card {
   width: min(100%, 440px);
   background: rgba(255, 255, 255, 0.88);
@@ -502,6 +510,7 @@ body {
   padding: 28px;
   backdrop-filter: blur(16px);
   box-shadow: 0 20px 70px rgba(15, 23, 42, 0.12);
+  color: #111827;
 }
 
 .auth-eyebrow {
@@ -516,11 +525,12 @@ body {
   margin: 0;
   font-size: 2rem;
   line-height: 1.05;
+  color: #111827;
 }
 
 .auth-copy {
   margin: 10px 0 0;
-  color: var(--muted);
+  color: #4b5563;
   line-height: 1.5;
 }
 
@@ -573,6 +583,20 @@ body {
   font-size: 0.8rem;
 }
 
+.auth-card .field span {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.auth-card input {
+  color: #111827;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.auth-card input::placeholder {
+  color: #6b7280;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -594,5 +618,16 @@ body {
   .auth-hero {
     min-height: 260px;
     padding: 24px;
+  }
+
+  .auth-hero-copy {
+    position: static;
+    max-width: none;
+  }
+
+  .auth-panel-overlay {
+    position: static;
+    inset: auto;
+    padding: 24px 0 0;
   }
 }
