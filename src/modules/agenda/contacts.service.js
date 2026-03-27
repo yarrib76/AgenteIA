@@ -13,28 +13,64 @@ function normalizeGroupId(groupId) {
   return "";
 }
 
+function normalizeTelegramId(value) {
+  return String(value || "").trim().replace(/\s+/g, "");
+}
+
 function normalizeContactType(type) {
   const value = String(type || "").trim().toLowerCase();
   return value === "group" ? "group" : "contact";
 }
 
+function normalizeChannel(channel) {
+  return String(channel || "").trim().toLowerCase() === "telegram" ? "telegram" : "whatsapp";
+}
+
 function toNormalizedContact(contact) {
   const type = normalizeContactType(contact && contact.type);
-  const phone = normalizePhone(contact && contact.phone);
-  const groupId = normalizeGroupId(contact && (contact.groupId || contact.whatsappId));
+  const phone = normalizePhone(contact && (contact.phone || contact.whatsappPhone));
+  const groupId = normalizeGroupId(contact && (contact.groupId || contact.whatsappGroupId || contact.whatsappId));
+  const telegramUserId = normalizeTelegramId(contact && (contact.telegramUserId || contact.telegramChatId));
+  const telegramGroupId = normalizeTelegramId(contact && contact.telegramGroupId);
   const whatsappId = type === "group" ? groupId : phone;
   return {
     ...contact,
     type,
     phone: type === "contact" ? phone : "",
     groupId: type === "group" ? groupId : "",
+    whatsappPhone: type === "contact" ? phone : "",
+    whatsappGroupId: type === "group" ? groupId : "",
     whatsappId,
+    telegramUserId: type === "contact" ? telegramUserId : "",
+    telegramChatId: type === "contact" ? telegramUserId : "",
+    telegramGroupId: type === "group" ? telegramGroupId : "",
   };
 }
 
-function getContactMessageTarget(contact) {
+function normalizeTarget(channel, value) {
+  const nextChannel = normalizeChannel(channel);
+  if (nextChannel === "telegram") return normalizeTelegramId(value);
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.endsWith("@g.us")) return raw;
+  return normalizePhone(raw);
+}
+
+function getContactMessageTarget(contact, channel = "whatsapp") {
   const normalized = toNormalizedContact(contact || {});
+  const nextChannel = normalizeChannel(channel);
+  if (nextChannel === "telegram") {
+    return normalized.type === "group" ? normalized.telegramGroupId : normalized.telegramUserId;
+  }
   return normalized.type === "group" ? normalized.groupId : normalized.phone;
+}
+
+function hasTargetForChannel(contact, channel = "whatsapp") {
+  return Boolean(getContactMessageTarget(contact, channel));
+}
+
+function getContactTargetLabel(contact, channel = "whatsapp") {
+  return getContactMessageTarget(contact, channel) || "No configurado para este canal";
 }
 
 async function listContacts() {
@@ -45,33 +81,56 @@ async function listContacts() {
     .sort((a, b) => a.name.localeCompare(b.name, "es"));
 }
 
-async function createContact({ name, phone, type, groupId, whatsappId }) {
+async function createContact({
+  name,
+  phone,
+  type,
+  groupId,
+  whatsappPhone,
+  whatsappGroupId,
+  telegramUserId,
+  telegramGroupId,
+}) {
   const nextType = normalizeContactType(type);
   const trimmedName = String(name || "").trim();
-  const normalizedPhone = normalizePhone(phone);
-  const normalizedGroupId = normalizeGroupId(groupId || whatsappId);
+  const normalizedPhone = normalizePhone(whatsappPhone || phone);
+  const normalizedGroupId = normalizeGroupId(whatsappGroupId || groupId);
+  const normalizedTelegramUserId = normalizeTelegramId(telegramUserId);
+  const normalizedTelegramGroupId = normalizeTelegramId(telegramGroupId);
 
   if (!trimmedName) throw new Error("El nombre es obligatorio.");
-  if (nextType === "contact" && !normalizedPhone) {
-    throw new Error("El numero de WhatsApp es obligatorio.");
+  if (nextType === "contact" && !normalizedPhone && !normalizedTelegramUserId) {
+    throw new Error("Debes cargar al menos WhatsApp o Telegram para el contacto.");
   }
-  if (nextType === "group" && !normalizedGroupId) {
-    throw new Error("El ID de grupo es obligatorio (ej: 123456@g.us).");
+  if (nextType === "group" && !normalizedGroupId && !normalizedTelegramGroupId) {
+    throw new Error("Debes cargar al menos un grupo de WhatsApp o Telegram.");
   }
 
   const { contacts: contactsRepo } = getRepositories();
   const contacts = (await contactsRepo.list()).map((c) => toNormalizedContact(c));
-  if (nextType === "contact") {
+  if (nextType === "contact" && normalizedPhone) {
     const exists = contacts.some(
       (c) => c.type === "contact" && normalizePhone(c.phone) === normalizedPhone
     );
-    if (exists) throw new Error("Ya existe un contacto con ese numero.");
+    if (exists) throw new Error("Ya existe un contacto con ese numero de WhatsApp.");
   }
-  if (nextType === "group") {
+  if (nextType === "group" && normalizedGroupId) {
     const exists = contacts.some(
       (c) => c.type === "group" && normalizeGroupId(c.groupId) === normalizedGroupId
     );
-    if (exists) throw new Error("Ya existe un contacto con ese grupo.");
+    if (exists) throw new Error("Ya existe un contacto con ese grupo de WhatsApp.");
+  }
+  if (nextType === "contact" && normalizedTelegramUserId) {
+    const exists = contacts.some(
+      (c) => c.type === "contact" && normalizeTelegramId(c.telegramUserId) === normalizedTelegramUserId
+    );
+    if (exists) throw new Error("Ya existe un contacto con ese usuario de Telegram.");
+  }
+  if (nextType === "group" && normalizedTelegramGroupId) {
+    const exists = contacts.some(
+      (c) => c.type === "group" && normalizeTelegramId(c.telegramGroupId) === normalizedTelegramGroupId
+    );
+    if (exists) throw new Error("Ya existe un contacto con ese grupo de Telegram.");
   }
 
   const contact = {
@@ -80,7 +139,12 @@ async function createContact({ name, phone, type, groupId, whatsappId }) {
     type: nextType,
     phone: nextType === "contact" ? normalizedPhone : "",
     groupId: nextType === "group" ? normalizedGroupId : "",
+    whatsappPhone: nextType === "contact" ? normalizedPhone : "",
+    whatsappGroupId: nextType === "group" ? normalizedGroupId : "",
     whatsappId: nextType === "group" ? normalizedGroupId : normalizedPhone,
+    telegramUserId: nextType === "contact" ? normalizedTelegramUserId : "",
+    telegramChatId: nextType === "contact" ? normalizedTelegramUserId : "",
+    telegramGroupId: nextType === "group" ? normalizedTelegramGroupId : "",
     createdAt: new Date().toISOString(),
   };
 
@@ -95,20 +159,32 @@ async function getContactById(id) {
   return found ? toNormalizedContact(found) : null;
 }
 
-async function updateContact(contactId, { name, phone, type, groupId, whatsappId }) {
+async function updateContact(contactId, {
+  name,
+  phone,
+  type,
+  groupId,
+  whatsappPhone,
+  whatsappGroupId,
+  telegramUserId,
+  telegramGroupId,
+}) {
   const targetId = String(contactId || "").trim();
   if (!targetId) throw new Error("Contacto invalido.");
 
   const nextType = normalizeContactType(type);
   const trimmedName = String(name || "").trim();
-  const normalizedPhone = normalizePhone(phone);
-  const normalizedGroupId = normalizeGroupId(groupId || whatsappId);
+  const normalizedPhone = normalizePhone(whatsappPhone || phone);
+  const normalizedGroupId = normalizeGroupId(whatsappGroupId || groupId);
+  const normalizedTelegramUserId = normalizeTelegramId(telegramUserId);
+  const normalizedTelegramGroupId = normalizeTelegramId(telegramGroupId);
+
   if (!trimmedName) throw new Error("El nombre es obligatorio.");
-  if (nextType === "contact" && !normalizedPhone) {
-    throw new Error("El numero de WhatsApp es obligatorio.");
+  if (nextType === "contact" && !normalizedPhone && !normalizedTelegramUserId) {
+    throw new Error("Debes cargar al menos WhatsApp o Telegram para el contacto.");
   }
-  if (nextType === "group" && !normalizedGroupId) {
-    throw new Error("El ID de grupo es obligatorio (ej: 123456@g.us).");
+  if (nextType === "group" && !normalizedGroupId && !normalizedTelegramGroupId) {
+    throw new Error("Debes cargar al menos un grupo de WhatsApp o Telegram.");
   }
 
   const { contacts: contactsRepo, taskReplyRoutes: routesRepo } = getRepositories();
@@ -116,54 +192,72 @@ async function updateContact(contactId, { name, phone, type, groupId, whatsappId
   const index = contacts.findIndex((c) => c.id === targetId);
   if (index < 0) throw new Error("Contacto no encontrado.");
 
-  const oldTarget = getContactMessageTarget(contacts[index]);
-  if (nextType === "contact") {
+  if (nextType === "contact" && normalizedPhone) {
+    const duplicate = contacts.some(
+      (c) => c.id !== targetId && c.type === "contact" && normalizePhone(c.phone) === normalizedPhone
+    );
+    if (duplicate) throw new Error("Ya existe otro contacto con ese numero de WhatsApp.");
+  }
+  if (nextType === "group" && normalizedGroupId) {
+    const duplicate = contacts.some(
+      (c) => c.id !== targetId && c.type === "group" && normalizeGroupId(c.groupId) === normalizedGroupId
+    );
+    if (duplicate) throw new Error("Ya existe otro contacto con ese grupo de WhatsApp.");
+  }
+  if (nextType === "contact" && normalizedTelegramUserId) {
     const duplicate = contacts.some(
       (c) =>
         c.id !== targetId &&
         c.type === "contact" &&
-        normalizePhone(c.phone) === normalizedPhone
+        normalizeTelegramId(c.telegramUserId) === normalizedTelegramUserId
     );
-    if (duplicate) throw new Error("Ya existe otro contacto con ese numero.");
+    if (duplicate) throw new Error("Ya existe otro contacto con ese usuario de Telegram.");
   }
-  if (nextType === "group") {
+  if (nextType === "group" && normalizedTelegramGroupId) {
     const duplicate = contacts.some(
       (c) =>
         c.id !== targetId &&
         c.type === "group" &&
-        normalizeGroupId(c.groupId) === normalizedGroupId
+        normalizeTelegramId(c.telegramGroupId) === normalizedTelegramGroupId
     );
-    if (duplicate) throw new Error("Ya existe otro contacto con ese grupo.");
+    if (duplicate) throw new Error("Ya existe otro contacto con ese grupo de Telegram.");
   }
 
+  const previous = contacts[index];
   const updated = {
-    ...contacts[index],
+    ...previous,
     name: trimmedName,
     type: nextType,
     phone: nextType === "contact" ? normalizedPhone : "",
     groupId: nextType === "group" ? normalizedGroupId : "",
+    whatsappPhone: nextType === "contact" ? normalizedPhone : "",
+    whatsappGroupId: nextType === "group" ? normalizedGroupId : "",
     whatsappId: nextType === "group" ? normalizedGroupId : normalizedPhone,
+    telegramUserId: nextType === "contact" ? normalizedTelegramUserId : "",
+    telegramChatId: nextType === "contact" ? normalizedTelegramUserId : "",
+    telegramGroupId: nextType === "group" ? normalizedTelegramGroupId : "",
     updatedAt: new Date().toISOString(),
   };
   contacts[index] = updated;
   await contactsRepo.saveAll(contacts);
 
-  // Mantener consistencia en rutas de respuesta de tareas.
   const routes = await routesRepo.list();
   let changedRoutes = false;
+  const channels = ["whatsapp", "telegram"];
   const nextRoutes = (Array.isArray(routes) ? routes : []).map((route) => {
     if (!route) return route;
     let changed = false;
     const next = { ...route };
+    const routeChannel = normalizeChannel(route.channel || "whatsapp");
+    const oldTarget = getContactMessageTarget(previous, routeChannel);
+    const newTarget = getContactMessageTarget(updated, routeChannel);
     if (String(next.destinationContactId || "") === targetId) {
-      const nextDestination = getContactMessageTarget(updated);
-      if (String(next.destinationPhone || "") !== nextDestination) {
-        next.destinationPhone = nextDestination;
+      if (String(next.destinationPhone || "") !== newTarget) {
+        next.destinationPhone = newTarget;
         changed = true;
       }
     }
-    const newTarget = getContactMessageTarget(updated);
-    if (oldTarget && String(next.sourcePhone || "") === oldTarget && oldTarget !== newTarget) {
+    if (channels.includes(routeChannel) && oldTarget && String(next.sourcePhone || "") === oldTarget && oldTarget !== newTarget) {
       next.sourcePhone = newTarget;
       changed = true;
     }
@@ -206,10 +300,10 @@ async function deleteContact(contactId) {
 
   const inRoutes = (routes || []).some(
     (row) =>
-      String(row && row.destinationContactId) === targetId
-      && row
-      && row.enabled !== false
-      && row.routingEnabled !== false
+      String(row && row.destinationContactId) === targetId &&
+      row &&
+      row.enabled !== false &&
+      row.routingEnabled !== false
   );
   if (inRoutes) {
     throw new Error("No se puede eliminar: el contacto tiene ruteos de respuesta activos.");
@@ -228,5 +322,11 @@ module.exports = {
   deleteContact,
   normalizePhone,
   normalizeGroupId,
+  normalizeTelegramId,
+  normalizeChannel,
+  normalizeTarget,
   getContactMessageTarget,
+  getContactTargetLabel,
+  hasTargetForChannel,
+  toNormalizedContact,
 };

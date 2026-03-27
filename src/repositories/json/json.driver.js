@@ -5,6 +5,8 @@ function createJsonDriver() {
   const files = {
     contacts: path.join(process.cwd(), "data", "contacts.json"),
     messages: path.join(process.cwd(), "data", "messages.json"),
+    messagingSettings: path.join(process.cwd(), "data", "messaging_settings.json"),
+    telegramChats: path.join(process.cwd(), "data", "telegram_chats.json"),
     aliases: path.join(process.cwd(), "data", "contact_aliases.json"),
     roles: path.join(process.cwd(), "data", "roles.json"),
     agents: path.join(process.cwd(), "data", "agents.json"),
@@ -29,6 +31,14 @@ function createJsonDriver() {
     messages: {
       list: () => readJson(files.messages, []),
       saveAll: (rows) => writeJson(files.messages, rows),
+    },
+    messagingSettings: {
+      list: () => readJson(files.messagingSettings, []),
+      saveAll: (rows) => writeJson(files.messagingSettings, rows),
+    },
+    telegramChats: {
+      list: () => readJson(files.telegramChats, []),
+      saveAll: (rows) => writeJson(files.telegramChats, rows),
     },
     contactAliases: {
       list: () => readJson(files.aliases, []),

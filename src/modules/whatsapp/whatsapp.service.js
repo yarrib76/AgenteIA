@@ -3,11 +3,12 @@ const QRCode = require("qrcode");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const whatsappState = require("./whatsapp.state");
 const whatsappGateway = require("./whatsapp.gateway");
+const messagingGateway = require("../messaging/messaging.gateway");
 const { addMessage } = require("../chat/messages.service");
 const contactsService = require("../agenda/contacts.service");
 const { normalizePhone } = contactsService;
 const contactAliasesService = require("../agenda/contact-aliases.service");
-const taskReplyRoutesService = require("../task/task-reply-routes.service");
+const { routeTaskReplyIfNeeded } = require("../messaging/reply-routing.service");
 
 function buildWhatsAppService() {
   let io = null;
@@ -205,54 +206,6 @@ function buildWhatsAppService() {
       contactKey: toContactKeyFromChatId(chatId) || normalizePhone(phone),
       messageId: extractMessageId(sent),
     };
-  }
-
-  async function routeTaskReplyIfNeeded({
-    sourcePhone,
-    text,
-    quotedMessageId = "",
-    isGroup = false,
-    groupName = "",
-    authorName = "",
-    authorPhone = "",
-  }) {
-    const routeWindowHours = Number.parseInt(
-      String(process.env.TASK_REPLY_ROUTE_WINDOW_HOURS || "168"),
-      10
-    );
-    const selection = await taskReplyRoutesService.findRoutesForIncoming({
-      sourcePhone,
-      quotedMessageId,
-      maxAgeHours: routeWindowHours,
-    });
-    const routes = selection && Array.isArray(selection.routes) ? selection.routes : [];
-    if (!routes || routes.length === 0) return;
-
-    for (const route of routes) {
-      try {
-        const headerLine = isGroup
-          ? `[Grupo: ${String(groupName || sourcePhone)}] [Autor: ${String(
-              authorName || authorPhone || "desconocido"
-            )}]`
-          : `[Autor: ${String(authorName || authorPhone || sourcePhone || "desconocido")}]`;
-        const originalLine = String(route.originalMessage || "").trim()
-          ? `Mensaje original:\n${String(route.originalMessage || "").trim()}`
-          : "Mensaje original:\n(No disponible)";
-        const replyLine = `Respuesta entrante:\n${String(text || "").trim()}`;
-        const finalText = [headerLine, originalLine, replyLine].join("\n\n");
-
-        await sendMessageInternal(route.destinationPhone, finalText);
-        await addMessage({
-          contactPhone: route.destinationPhone,
-          direction: "out",
-          text: finalText,
-          status: "routed_from_task_reply",
-        });
-        await taskReplyRoutesService.markRouteResponded(route.id);
-      } catch (error) {
-        // Si falla un destino, no se interrumpe el procesamiento del resto.
-      }
-    }
   }
 
   function scheduleReconnect(reason) {
@@ -463,19 +416,21 @@ function buildWhatsAppService() {
           const text = message.body || "";
           if (!text.trim()) return;
           await addMessage({
+            channel: "whatsapp",
             contactPhone,
             direction: "in",
             text,
             status: "received",
           });
           await routeTaskReplyIfNeeded({
-            sourcePhone: contactPhone,
+            channel: "whatsapp",
+            sourceTarget: contactPhone,
             text,
             quotedMessageId: await extractQuotedMessageId(message),
             isGroup,
             groupName,
             authorName,
-            authorPhone,
+            authorTarget: authorPhone,
           });
         } catch (error) {
           // No interrumpir la sesion por falla de persistencia.
@@ -548,6 +503,18 @@ function buildWhatsAppService() {
     },
     resolveContactKeys: resolveContactKeysInternal,
     listGroups: listGroupsInternal,
+  });
+
+  messagingGateway.setProvider("whatsapp", {
+    sendMessage: sendMessageInternal,
+    isReady: () => {
+      const status = whatsappState.getPublicStatus();
+      return Boolean(status.linked);
+    },
+    resolveContactKeys: resolveContactKeysInternal,
+    listGroups: listGroupsInternal,
+    getPublicStatus: async () => whatsappState.getPublicStatus(),
+    refreshLink: refreshQrInternal,
   });
 
   return {

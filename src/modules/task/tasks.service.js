@@ -7,7 +7,7 @@ const modelsService = require("../model/models.service");
 const modelTestService = require("../model/model-test.service");
 const contactsService = require("../agenda/contacts.service");
 const integrationsService = require("../integration/api-integrations.service");
-const whatsappGateway = require("../whatsapp/whatsapp.gateway");
+const messagingGateway = require("../messaging/messaging.gateway");
 const messagesService = require("../chat/messages.service");
 const taskReplyRoutesService = require("./task-reply-routes.service");
 
@@ -46,6 +46,12 @@ function normalizeCompareText(value) {
     .replace(/\s+/g, " ")
     .replace(/[.,;:!?]/g, "")
     .trim();
+}
+
+function normalizeActionType(value) {
+  const type = normalizeText(value).toLowerCase();
+  if (type === "send_whatsapp") return "send_message";
+  return type;
 }
 
 function getExecutionTimeoutMs() {
@@ -258,10 +264,10 @@ function buildActionContractPrompt({ allowApiActions = false } = {}) {
     return [
       "Responde SOLO en JSON valido, sin markdown.",
       "Esquema de salida:",
-      '{"result_summary":"texto", "actions":[{"type":"call_external_api","integrationId":"id_integracion","query":{},"body":{},"evidence":{"source":"texto","reason":"texto"}},{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}] }',
+      '{"result_summary":"texto", "actions":[{"type":"call_external_api","integrationId":"id_integracion","query":{},"body":{},"evidence":{"source":"texto","reason":"texto"}},{"type":"send_message","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}] }',
       "Si no hay accion, enviar actions: [].",
       "Usa call_external_api solo cuando necesites consultar APIs externas.",
-      "Si la accion es send_whatsapp, el campo message debe comenzar exactamente con el detalle del rol del agente.",
+      "Si la accion es send_message, el campo message debe comenzar exactamente con el detalle del rol del agente.",
       "Si hay lista de contactos disponible, prioriza devolver contactId.",
       "Si hay lista de integraciones disponible, prioriza devolver integrationId.",
       "Cada accion debe incluir evidence breve y verificable usando SOLO datos del input.",
@@ -272,16 +278,16 @@ function buildActionContractPrompt({ allowApiActions = false } = {}) {
   return [
     "Responde SOLO en JSON valido, sin markdown.",
     "Esquema de salida:",
-    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}] }',
+    '{"result_summary":"texto", "actions":[{"type":"send_message","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}] }',
     "Si no hay accion, enviar actions: [].",
-    "Si la accion es send_whatsapp, el campo message debe comenzar exactamente con el detalle del rol del agente.",
+    "Si la accion es send_message, el campo message debe comenzar exactamente con el detalle del rol del agente.",
     "Si hay lista de contactos disponible, prioriza devolver contactId.",
     "Cada accion debe incluir evidence breve y verificable usando SOLO datos del input.",
     "No inventes contactos inexistentes.",
   ].join("\n");
 }
 
-function buildForceWhatsAppRetryPrompt({
+function buildForceMessageRetryPrompt({
   mergedPrompt,
   runtimeFileContext,
   contactsReferenceText,
@@ -295,15 +301,15 @@ function buildForceWhatsAppRetryPrompt({
     integrationsReferenceText || "",
     "",
     "REINTENTO OBLIGATORIO.",
-    "La tarea requiere enviar WhatsApp.",
+    "La tarea requiere enviar un mensaje.",
     "Responde SOLO en JSON valido, sin markdown.",
-    "Devuelve EXACTAMENTE 1 accion en actions con type=send_whatsapp.",
+    "Devuelve EXACTAMENTE 1 accion en actions con type=send_message.",
     "No permitas actions vacio.",
     "Si result_summary ya contiene el contenido, usalo para el campo message.",
     "Si hay lista de contactos, devuelve contactId para evitar ambiguedad.",
     "No devuelvas call_external_api en este reintento.",
     "Esquema estricto:",
-    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}]}',
+    '{"result_summary":"texto", "actions":[{"type":"send_message","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}]}',
     lastResultSummary
       ? `Resultado previo disponible: ${String(lastResultSummary)}`
       : "",
@@ -325,7 +331,8 @@ function buildContactsReferenceText(contacts) {
     id: c.id,
     name: c.name,
     type: c.type || "contact",
-    target: contactsService.getContactMessageTarget(c),
+    whatsappTarget: contactsService.getContactMessageTarget(c, "whatsapp"),
+    telegramTarget: contactsService.getContactMessageTarget(c, "telegram"),
   }));
   return [
     "Contactos disponibles (usar contactId cuando corresponda):",
@@ -402,7 +409,7 @@ function appendLog(task, step, status, message, data) {
   };
 }
 
-function requiresWhatsAppAction(task) {
+function requiresMessagingAction(task) {
   const text = [
     task.taskPromptTemplate || "",
     task.taskInput || "",
@@ -410,7 +417,7 @@ function requiresWhatsAppAction(task) {
   ]
     .join(" ")
     .toLowerCase();
-  return text.includes("whatsapp") || text.includes("whatssap");
+  return text.includes("whatsapp") || text.includes("whatssap") || text.includes("telegram");
 }
 
 async function listTasks() {
@@ -720,16 +727,25 @@ async function queueTask(taskId) {
 
 async function resolveContact(contactRaw) {
   const lookup = normalizeText(contactRaw);
-  if (!lookup) throw new Error("Accion send_whatsapp sin contacto.");
+  if (!lookup) throw new Error("Accion send_message sin contacto.");
 
   const contacts = await contactsService.listContacts();
   const normalizedLookup = contactsService.normalizePhone(lookup);
   const normalizedGroupLookup = contactsService.normalizeGroupId(lookup);
+  const normalizedTelegramLookup = contactsService.normalizeTelegramId(lookup);
 
   const directPhone = contacts.find((c) => c.type === "contact" && c.phone === normalizedLookup);
   if (directPhone) return directPhone;
   const directGroup = contacts.find((c) => c.type === "group" && c.groupId === normalizedGroupLookup);
   if (directGroup) return directGroup;
+  const directTelegramUser = contacts.find(
+    (c) => c.type === "contact" && c.telegramUserId === normalizedTelegramLookup
+  );
+  if (directTelegramUser) return directTelegramUser;
+  const directTelegramGroup = contacts.find(
+    (c) => c.type === "group" && c.telegramGroupId === normalizedTelegramLookup
+  );
+  if (directTelegramGroup) return directTelegramGroup;
 
   const byName = contacts.find(
     (c) => String(c.name || "").trim().toLowerCase() === lookup.toLowerCase()
@@ -893,7 +909,7 @@ function buildApiResultsFollowupPrompt({
     "No devuelvas call_external_api nuevamente en este paso.",
     "Cada accion debe incluir evidence breve y verificable usando SOLO datos del input.",
     "Esquema:",
-    '{"result_summary":"texto", "actions":[{"type":"send_whatsapp","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}]}',
+    '{"result_summary":"texto", "actions":[{"type":"send_message","contactId":"id_opcional","contact":"nombre o numero","message":"texto","evidence":{"source":"texto","reason":"texto","rows":[{"numero_pedido":0,"vendedora":"texto","vencida":"SI|NO","notas_presentes":true}]}}]}',
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -1075,7 +1091,7 @@ function collectEvidenceWarnings(actions, apiRows, contacts) {
   for (let i = 0; i < normalizedActions.length; i += 1) {
     const action = normalizedActions[i] || {};
     const type = normalizeText(action.type).toLowerCase();
-    if (type !== "send_whatsapp") continue;
+    if (normalizeActionType(type) !== "send_message") continue;
     const evidence = normalizeActionObject(action.evidence);
     if (Object.keys(evidence).length === 0) {
       warnings.push({
@@ -1224,7 +1240,7 @@ async function applyPendingPaymentsConsistency({
   for (let i = 0; i < actions.length; i += 1) {
     const action = actions[i] || {};
     const type = normalizeText(action.type).toLowerCase();
-    if (type !== "send_whatsapp") {
+    if (normalizeActionType(type) !== "send_message") {
       validActions.push(action);
       continue;
     }
@@ -1294,7 +1310,7 @@ async function applyPendingPaymentsConsistency({
   for (const [contactId, requirement] of requirementsByContactId.entries()) {
     if (requirement.overdueRows.length > 0 && !coveredKinds.has(`overdue:${contactId}`)) {
       validActions.push({
-        type: "send_whatsapp",
+        type: "send_message",
         contactId,
         contact: requirement.contact.name,
         message: buildOverdueReminderMessage(requirement.contact.name, requirement.overdueRows),
@@ -1318,7 +1334,7 @@ async function applyPendingPaymentsConsistency({
     }
     if (requirement.missingNoteRows.length > 0 && !coveredKinds.has(`missing_note:${contactId}`)) {
       validActions.push({
-        type: "send_whatsapp",
+        type: "send_message",
         contactId,
         contact: requirement.contact.name,
         message: buildMissingPaymentNoteMessage(requirement.contact.name, requirement.missingNoteRows),
@@ -1362,7 +1378,7 @@ async function applyGlobalGuardrails({
   for (let i = 0; i < sourceActions.length; i += 1) {
     const action = sourceActions[i] || {};
     const type = normalizeText(action.type).toLowerCase();
-    if (type !== "send_whatsapp") {
+    if (normalizeActionType(type) !== "send_message") {
       keptActions.push(action);
       continue;
     }
@@ -1435,22 +1451,30 @@ async function applyGlobalGuardrails({
   };
 }
 
-async function executeSendWhatsAppAction(task, action, context, resolvedContact) {
+async function executeSendMessageAction(task, action, context, resolvedContact) {
   const contact = resolvedContact || (await resolveContactFromAction(action));
-  const contactTarget = contactsService.getContactMessageTarget(contact);
+  const activeChannel = await messagingGateway.getChannel();
+  const contactTarget = contactsService.getContactMessageTarget(contact, activeChannel);
   const roleDetail = normalizeText(context && context.role ? context.role.detail : "");
   const message = normalizeText(action.message);
-  if (!message) throw new Error("Accion send_whatsapp sin mensaje.");
+  if (!message) throw new Error("Accion send_message sin mensaje.");
+  if (!contactTarget) {
+    throw new Error("El contacto no esta configurado para el canal activo.");
+  }
   const withTraceTag = parseBool(process.env.TASK_REPLY_APPEND_TID || "false");
   const tidTag = task && task.id ? `[TID:${String(task.id).slice(0, 8)}]` : "";
   const finalMessage = withTraceTag && tidTag ? `${message}\n\n${tidTag}` : message;
 
-  const sendResult = await whatsappGateway.sendMessage(contactTarget, finalMessage);
+  const sendResult = await messagingGateway.sendMessage(contactTarget, finalMessage, {
+    channel: activeChannel,
+  });
   await messagesService.addMessage({
+    channel: activeChannel,
     contactPhone: contactTarget,
     direction: "out",
     text: finalMessage,
     status: "sent",
+    providerMessageId: String(sendResult && sendResult.messageId || ""),
   });
 
   let replyRoute = null;
@@ -1462,9 +1486,10 @@ async function executeSendWhatsAppAction(task, action, context, resolvedContact)
     if (!destination) {
       throw new Error("No se pudo resolver el contacto destino de respuesta.");
     }
-    const destinationTarget = contactsService.getContactMessageTarget(destination);
+    const destinationTarget = contactsService.getContactMessageTarget(destination, activeChannel);
     replyRoute = await taskReplyRoutesService.upsertRouteForTask({
       taskId: task.id,
+      channel: activeChannel,
       sourcePhone: contactTarget,
       destinationContactId: destination.id,
       destinationPhone: destinationTarget,
@@ -1476,6 +1501,7 @@ async function executeSendWhatsAppAction(task, action, context, resolvedContact)
   } else if (task && task.replyRoutingMode === "none") {
     await taskReplyRoutesService.upsertRouteForTask({
       taskId: task.id,
+      channel: activeChannel,
       sourcePhone: contactTarget,
       routingEnabled: false,
       originalMessage: finalMessage,
@@ -1488,6 +1514,7 @@ async function executeSendWhatsAppAction(task, action, context, resolvedContact)
     contactId: contact.id,
     contactName: contact.name,
     phone: contactTarget,
+    channel: activeChannel,
     finalMessage,
     sent: true,
     outboundMessageId: sendResult && sendResult.messageId ? sendResult.messageId : null,
@@ -1516,7 +1543,7 @@ async function executeActions(task, parsed, context) {
     const action = actions[i] || {};
     const type = normalizeText(action.type).toLowerCase();
 
-    if (type === "send_whatsapp") {
+    if (normalizeActionType(type) === "send_message") {
       let resolvedContact = null;
       if (policy && policy.onlyVendors === true) {
         try {
@@ -1557,10 +1584,10 @@ async function executeActions(task, parsed, context) {
           continue;
         }
       }
-      const result = await executeSendWhatsAppAction(task, action, context, resolvedContact);
+      const result = await executeSendMessageAction(task, action, context, resolvedContact);
       results.push({
         index: i,
-        type,
+        type: "send_message",
         result: {
           ...result,
           evidence: normalizeActionObject(action.evidence),
@@ -1886,13 +1913,13 @@ async function executeTask(taskId, options = {}) {
       });
     }
 
-    if (requiresWhatsAppAction(task) && !allowNoWhatsappOnNoData) {
+    if (requiresMessagingAction(task) && !allowNoWhatsappOnNoData) {
       const initialActions = Array.isArray(parsed.actions) ? parsed.actions : [];
-      const hasWhatsAppAction = initialActions.some(
-        (a) => normalizeText(a && a.type).toLowerCase() === "send_whatsapp"
+      const hasMessageAction = initialActions.some(
+        (a) => normalizeActionType(a && a.type) === "send_message"
       );
-      if (!hasWhatsAppAction) {
-        const retryPrompt = buildForceWhatsAppRetryPrompt({
+      if (!hasMessageAction) {
+        const retryPrompt = buildForceMessageRetryPrompt({
           mergedPrompt: task.mergedPrompt,
           runtimeFileContext: [todayContextText, runtimeFileContext].filter(Boolean).join("\n\n"),
           contactsReferenceText,
@@ -1913,7 +1940,7 @@ async function executeTask(taskId, options = {}) {
           task,
           "model_call_retry",
           "running",
-          "Reintentando modelo para forzar accion send_whatsapp",
+          "Reintentando modelo para forzar accion send_message",
           {
             provider: model.provider,
             modelId: model.modelId,
@@ -1978,11 +2005,11 @@ async function executeTask(taskId, options = {}) {
     const failedActions = actionResults.filter((a) => !a.ok);
     const okActions = actionResults.filter((a) => a.ok);
 
-    if (requiresWhatsAppAction(task) && !allowNoWhatsappOnNoData) {
-      const hasWhatsAppAction = okActions.some((a) => a.type === "send_whatsapp");
-      if (!hasWhatsAppAction) {
+    if (requiresMessagingAction(task) && !allowNoWhatsappOnNoData) {
+      const hasMessageAction = okActions.some((a) => normalizeActionType(a.type) === "send_message");
+      if (!hasMessageAction) {
         throw new Error(
-          "La tarea requiere accion WhatsApp pero el modelo no devolvio send_whatsapp."
+          "La tarea requiere accion de mensaje pero el modelo no devolvio send_message."
         );
       }
     }

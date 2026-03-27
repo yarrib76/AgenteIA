@@ -3,6 +3,8 @@
     <h2>Registrar contacto</h2>
   </div>
 
+  <p class="note">Canal activo: <strong><%= activeChannel === "telegram" ? "Telegram" : "WhatsApp" %></strong></p>
+
   <form id="agendaForm" class="form-grid">
     <input type="hidden" id="contactId" name="contactId" />
     <label class="field">
@@ -18,17 +20,25 @@
     </label>
     <label id="contactPhoneField" class="field">
       <span>Numero WhatsApp</span>
-      <input type="text" name="phone" required maxlength="20" placeholder="54911..." />
+      <input type="text" name="whatsappPhone" maxlength="20" placeholder="54911..." />
     </label>
     <label id="contactGroupField" class="field hidden">
       <span>Grupo WhatsApp</span>
       <div class="inline-actions">
-        <select id="contactGroupId" name="groupId">
+        <select id="contactGroupId" name="whatsappGroupId">
           <option value="">Seleccionar grupo...</option>
         </select>
         <button id="refreshGroupsBtn" class="secondary-button" type="button">Actualizar</button>
       </div>
-      <small class="note">Se listan los grupos visibles para el telefono vinculado.</small>
+      <small class="note">Se listan los grupos visibles para el provider activo.</small>
+    </label>
+    <label id="contactTelegramUserField" class="field">
+      <span>ID Telegram usuario</span>
+      <input type="text" name="telegramUserId" maxlength="40" placeholder="123456789" />
+    </label>
+    <label id="contactTelegramGroupField" class="field hidden">
+      <span>Grupo Telegram</span>
+      <input type="text" name="telegramGroupId" maxlength="40" placeholder="-1001234567890" />
     </label>
     <div class="inline-actions">
       <button id="saveContactBtn" class="primary-button" type="submit">Guardar contacto</button>
@@ -55,6 +65,7 @@
           <th>Nombre</th>
           <th>Tipo</th>
           <th>WhatsApp</th>
+          <th>Telegram</th>
           <th>Acciones</th>
         </tr>
       </thead>
@@ -64,6 +75,7 @@
           <td><%= contact.name %></td>
           <td><%= contact.type === "group" ? "Grupo" : "Usuario" %></td>
           <td><%= contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone %></td>
+          <td><%= contact.type === "group" ? (contact.telegramGroupId || "-") : (contact.telegramUserId || "-") %></td>
           <td>
             <div class="inline-actions">
               <button
@@ -74,6 +86,8 @@
                 data-type="<%= contact.type || 'contact' %>"
                 data-phone="<%= contact.phone %>"
                 data-group-id="<%= contact.groupId || contact.whatsappId || '' %>"
+                data-telegram-user-id="<%= contact.telegramUserId || '' %>"
+                data-telegram-group-id="<%= contact.telegramGroupId || '' %>"
               >
                 Editar
               </button>

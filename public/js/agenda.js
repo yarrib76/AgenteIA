@@ -10,8 +10,12 @@
   const saveContactBtn = document.getElementById("saveContactBtn");
   const cancelEditBtn = document.getElementById("cancelEditContactBtn");
   const nameInput = form ? form.querySelector('input[name="name"]') : null;
-  const phoneInput = form ? form.querySelector('input[name="phone"]') : null;
-  const groupIdInput = form ? form.querySelector('[name="groupId"]') : null;
+  const phoneInput = form ? form.querySelector('input[name="whatsappPhone"]') : null;
+  const groupIdInput = form ? form.querySelector('[name="whatsappGroupId"]') : null;
+  const telegramUserIdInput = form ? form.querySelector('input[name="telegramUserId"]') : null;
+  const telegramGroupIdInput = form ? form.querySelector('input[name="telegramGroupId"]') : null;
+  const telegramUserField = document.getElementById("contactTelegramUserField");
+  const telegramGroupField = document.getElementById("contactTelegramGroupField");
   const editButtons = document.querySelectorAll(".edit-contact-btn");
   const deleteButtons = document.querySelectorAll(".delete-contact-btn");
 
@@ -21,8 +25,12 @@
     const isGroup = String(contactTypeInput && contactTypeInput.value) === "group";
     if (contactPhoneField) contactPhoneField.classList.toggle("hidden", isGroup);
     if (contactGroupField) contactGroupField.classList.toggle("hidden", !isGroup);
-    if (phoneInput) phoneInput.required = !isGroup;
-    if (groupIdInput) groupIdInput.required = isGroup;
+    if (telegramUserField) telegramUserField.classList.toggle("hidden", isGroup);
+    if (telegramGroupField) telegramGroupField.classList.toggle("hidden", !isGroup);
+    if (phoneInput) phoneInput.required = false;
+    if (groupIdInput) groupIdInput.required = false;
+    if (telegramUserIdInput) telegramUserIdInput.required = false;
+    if (telegramGroupIdInput) telegramGroupIdInput.required = false;
     if (isGroup) {
       loadGroups(groupIdInput ? groupIdInput.value : "");
     }
@@ -34,7 +42,7 @@
     contactGroupIdSelect.innerHTML = '<option value="">Cargando grupos...</option>';
     if (refreshGroupsBtn) refreshGroupsBtn.disabled = true;
     try {
-      const response = await fetch("/api/whatsapp/groups");
+      const response = await fetch("/api/messaging/groups");
       const data = await response.json();
       if (!response.ok || !data.ok) {
         throw new Error(data.message || "No se pudieron cargar los grupos.");
@@ -85,6 +93,8 @@
     if (nameInput) nameInput.value = contact.name || "";
     if (phoneInput) phoneInput.value = contact.phone || "";
     if (groupIdInput) groupIdInput.value = contact.groupId || "";
+    if (telegramUserIdInput) telegramUserIdInput.value = contact.telegramUserId || "";
+    if (telegramGroupIdInput) telegramGroupIdInput.value = contact.telegramGroupId || "";
     if (saveContactBtn) saveContactBtn.textContent = "Guardar cambios";
     if (cancelEditBtn) cancelEditBtn.classList.remove("hidden");
     msg.textContent = `Editando contacto: ${contact.name}`;
@@ -123,8 +133,10 @@
     const payload = {
       type: formData.get("type"),
       name: formData.get("name"),
-      phone: formData.get("phone"),
-      groupId: formData.get("groupId"),
+      whatsappPhone: formData.get("whatsappPhone"),
+      whatsappGroupId: formData.get("whatsappGroupId"),
+      telegramUserId: formData.get("telegramUserId"),
+      telegramGroupId: formData.get("telegramGroupId"),
     };
 
     try {
@@ -156,6 +168,8 @@
         type: button.dataset.type || "contact",
         phone: button.dataset.phone,
         groupId: button.dataset.groupId || "",
+        telegramUserId: button.dataset.telegramUserId || "",
+        telegramGroupId: button.dataset.telegramGroupId || "",
       });
     });
   });

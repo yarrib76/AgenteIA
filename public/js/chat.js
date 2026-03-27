@@ -5,6 +5,9 @@
   const chatInput = document.getElementById("chatInput");
   const chatStatus = document.getElementById("chatStatus");
   const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+  const activeChannelInput = document.getElementById("activeChannel");
+  const selectedContactConfiguredInput = document.getElementById("selectedContactConfigured");
+  const sendButton = chatForm.querySelector('button[type="submit"]');
   let refreshTimer = null;
   let lastRenderedFingerprint = "";
   const chatTimeZone = "America/Argentina/Buenos_Aires";
@@ -72,7 +75,15 @@
         throw new Error(data.message || "No se pudo cargar la conversacion.");
       }
       renderMessages(data.messages || []);
-      chatStatus.textContent = `Conversacion con ${data.contact.name}`;
+      const configured = data.configured !== false;
+      if (chatInput) chatInput.disabled = !configured;
+      if (sendButton) sendButton.disabled = !configured;
+      if (selectedContactConfiguredInput) {
+        selectedContactConfiguredInput.value = configured ? "true" : "false";
+      }
+      chatStatus.textContent = configured
+        ? `Conversacion ${activeChannelInput && activeChannelInput.value === "telegram" ? "Telegram" : "WhatsApp"} con ${data.contact.name}`
+        : `El contacto ${data.contact.name} no esta configurado para este canal.`;
     } catch (error) {
       chatStatus.textContent = error.message;
     }
@@ -99,6 +110,10 @@
     const message = chatInput.value.trim();
     if (!contactId) {
       chatStatus.textContent = "Selecciona un contacto.";
+      return;
+    }
+    if (selectedContactConfiguredInput && selectedContactConfiguredInput.value !== "true") {
+      chatStatus.textContent = "El contacto no esta configurado para este canal.";
       return;
     }
     if (!message) return;

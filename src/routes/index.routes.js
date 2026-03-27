@@ -1,6 +1,7 @@
 const express = require("express");
 const authController = require("../controllers/auth.controller");
 const whatsappController = require("../controllers/whatsapp.controller");
+const messagingController = require("../controllers/messaging.controller");
 const agendaController = require("../controllers/agenda.controller");
 const chatController = require("../controllers/chat.controller");
 const agentController = require("../controllers/agent.controller");
@@ -20,8 +21,9 @@ router.post("/logout", authController.logout);
 
 router.use(authService.ensureAuthenticated);
 
-router.get("/", whatsappController.renderDashboard);
-router.get("/whatsapp", whatsappController.renderDashboard);
+router.get("/", messagingController.renderMessagingPage);
+router.get("/whatsapp", messagingController.renderMessagingPage);
+router.get("/mensajeria", messagingController.renderMessagingPage);
 router.get("/usuarios/nuevo", authService.ensureRegistrationAllowed, authController.renderRegisterPage);
 router.get("/agenda", agendaController.renderAgendaPage);
 router.get("/chat", chatController.renderChatPage);
@@ -35,6 +37,11 @@ router.get("/archivos/gestionar", fileController.renderManageFilesPage);
 router.get("/api/whatsapp/status", whatsappController.getStatus);
 router.get("/api/whatsapp/groups", whatsappController.listGroups);
 router.post("/api/whatsapp/qr/refresh", whatsappController.refreshQr);
+router.get("/api/messaging/status", messagingController.getStatus);
+router.get("/api/messaging/groups", messagingController.listGroups);
+router.post("/api/messaging/channel", messagingController.updateActiveChannel);
+router.post("/api/messaging/telegram/config", messagingController.updateTelegramConfig);
+router.post("/api/messaging/refresh", messagingController.refreshProvider);
 router.get("/api/contacts", agendaController.listContacts);
 router.post("/api/contacts", agendaController.createContact);
 router.put("/api/contacts/:contactId", agendaController.updateContact);

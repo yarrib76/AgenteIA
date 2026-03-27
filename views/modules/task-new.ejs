@@ -3,6 +3,8 @@
     <h2 id="taskFormTitle">Nueva tarea</h2>
   </div>
 
+  <p class="note">Canal activo para envios: <strong><%= activeChannel === "telegram" ? "Telegram" : "WhatsApp" %></strong></p>
+
   <form id="taskForm" class="form-grid">
     <input type="hidden" id="taskId" name="taskId" />
     <label class="field">
@@ -103,7 +105,7 @@
           <option value="">Sin ruteo automatico</option>
           <% contacts.forEach(function(contact) { %>
           <option value="<%= contact.id %>">
-            <%= contact.name %> [<%= contact.type === "group" ? "Grupo" : "Usuario" %>] (<%= contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone %>)
+            <%= contact.name %> [<%= contact.type === "group" ? "Grupo" : "Usuario" %>] (<%= activeChannel === "telegram" ? (contact.type === "group" ? (contact.telegramGroupId || "-") : (contact.telegramUserId || "-")) : (contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone) %>)
           </option>
           <% }) %>
         </select>
@@ -113,7 +115,7 @@
         <select id="taskAllowedGroupContactIds" name="allowedGroupContactIds" multiple size="4">
           <% contacts.filter(function(contact) { return contact.type === "group"; }).forEach(function(contact) { %>
           <option value="<%= contact.id %>">
-            <%= contact.name %> (<%= contact.groupId || contact.whatsappId || "-" %>)
+            <%= contact.name %> (<%= activeChannel === "telegram" ? (contact.telegramGroupId || "-") : (contact.groupId || contact.whatsappId || "-") %>)
           </option>
           <% }) %>
         </select>
@@ -217,7 +219,7 @@
         </td>
         <td data-col="proxima_ejecucion"><%= task.nextRunAtFormatted || task.nextRunAt || "-" %></td>
         <% const responseContact = contacts.find(function(c) { return c.id === task.responseContactId; }); %>
-        <td data-col="respuesta_a"><%= responseContact ? (responseContact.name + " (" + (responseContact.type === "group" ? (responseContact.groupId || responseContact.whatsappId || "-") : responseContact.phone) + ")") : "Sin ruteo" %></td>
+        <td data-col="respuesta_a"><%= responseContact ? (responseContact.name + " (" + (activeChannel === "telegram" ? (responseContact.type === "group" ? (responseContact.telegramGroupId || "-") : (responseContact.telegramUserId || "-")) : (responseContact.type === "group" ? (responseContact.groupId || responseContact.whatsappId || "-") : responseContact.phone)) + ")") : "Sin ruteo" %></td>
         <% const taskAllowedGroups = contacts.filter(function(c) { return c.type === "group" && (task.allowedGroupContactIds || []).includes(c.id); }); %>
         <td data-col="grupos_permitidos" class="wrap-cell"><%= taskAllowedGroups.length > 0 ? taskAllowedGroups.map(function(g) { return g.name; }).join(", ") : "Sin grupos" %></td>
         <% const file = files.find(function(f) { return f.id === task.fileId; }); %>

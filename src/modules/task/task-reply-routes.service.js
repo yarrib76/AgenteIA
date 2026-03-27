@@ -1,35 +1,35 @@
 const { randomUUID } = require("crypto");
 const { getRepositories } = require("../../repositories/repository-provider");
-const { normalizePhone } = require("../agenda/contacts.service");
+const contactsService = require("../agenda/contacts.service");
 
-function normalizeContactKey(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  if (raw.endsWith("@g.us")) return raw;
-  return normalizePhone(raw);
+function normalizeContactKey(channel, value) {
+  return contactsService.normalizeTarget(channel, value);
 }
 
 function normalizeRouteRow(row) {
+  const channel = contactsService.normalizeChannel(row && row.channel);
   const hasDestination = Boolean(
-    String(row.destinationContactId || "").trim() && String(row.destinationPhone || "").trim()
+    String(row && row.destinationContactId || "").trim() &&
+      String(row && row.destinationPhone || "").trim()
   );
   return {
-    id: row.id || randomUUID(),
-    taskId: String(row.taskId || "").trim(),
-    sourcePhone: normalizeContactKey(row.sourcePhone),
-    destinationContactId: String(row.destinationContactId || "").trim(),
-    destinationPhone: normalizeContactKey(row.destinationPhone),
+    id: row && row.id ? row.id : randomUUID(),
+    taskId: String(row && row.taskId || "").trim(),
+    channel,
+    sourcePhone: normalizeContactKey(channel, row && row.sourcePhone),
+    destinationContactId: String(row && row.destinationContactId || "").trim(),
+    destinationPhone: normalizeContactKey(channel, row && row.destinationPhone),
     routingEnabled:
-      typeof row.routingEnabled === "boolean" ? row.routingEnabled : hasDestination,
-    responded: row.responded === true || Boolean(row.closedAt),
-    respondedAt: row.respondedAt || row.closedAt || null,
-    closedAt: row.closedAt || null,
-    originalMessage: String(row.originalMessage || "").trim(),
-    lastOutboundMessageId: String(row.lastOutboundMessageId || "").trim(),
-    lastOutboundAt: row.lastOutboundAt || null,
-    enabled: row.enabled !== false,
-    createdAt: row.createdAt || new Date().toISOString(),
-    updatedAt: row.updatedAt || new Date().toISOString(),
+      typeof (row && row.routingEnabled) === "boolean" ? row.routingEnabled : hasDestination,
+    responded: row && (row.responded === true || Boolean(row.closedAt)),
+    respondedAt: row && (row.respondedAt || row.closedAt) || null,
+    closedAt: row && row.closedAt || null,
+    originalMessage: String(row && row.originalMessage || "").trim(),
+    lastOutboundMessageId: String(row && row.lastOutboundMessageId || "").trim(),
+    lastOutboundAt: row && row.lastOutboundAt || null,
+    enabled: !row || row.enabled !== false,
+    createdAt: row && row.createdAt || new Date().toISOString(),
+    updatedAt: row && row.updatedAt || new Date().toISOString(),
   };
 }
 
@@ -49,6 +49,7 @@ async function saveAll(rows) {
 
 async function upsertRouteForTask({
   taskId,
+  channel = "whatsapp",
   sourcePhone,
   destinationContactId,
   destinationPhone,
@@ -58,9 +59,10 @@ async function upsertRouteForTask({
   lastOutboundAt,
 }) {
   const nextTaskId = String(taskId || "").trim();
-  const nextSourcePhone = normalizeContactKey(sourcePhone);
+  const nextChannel = contactsService.normalizeChannel(channel);
+  const nextSourcePhone = normalizeContactKey(nextChannel, sourcePhone);
   const nextDestinationContactId = String(destinationContactId || "").trim();
-  const nextDestinationPhone = normalizeContactKey(destinationPhone);
+  const nextDestinationPhone = normalizeContactKey(nextChannel, destinationPhone);
   const nextRoutingEnabled = Boolean(routingEnabled);
   const nextOriginalMessage = String(originalMessage || "").trim();
   const nextLastOutboundMessageId = String(lastOutboundMessageId || "").trim();
@@ -75,13 +77,13 @@ async function upsertRouteForTask({
 
   const rows = await listRoutes();
   const now = new Date().toISOString();
-
   const upsertedRouteId = randomUUID();
   const updated = [
     ...rows,
     {
       id: upsertedRouteId,
       taskId: nextTaskId,
+      channel: nextChannel,
       sourcePhone: nextSourcePhone,
       destinationContactId: nextRoutingEnabled ? nextDestinationContactId : "",
       destinationPhone: nextRoutingEnabled ? nextDestinationPhone : "",
@@ -102,11 +104,12 @@ async function upsertRouteForTask({
   return updated.find((row) => row.id === upsertedRouteId) || null;
 }
 
-async function findActiveRoutesBySourcePhone(sourcePhone) {
-  const key = normalizeContactKey(sourcePhone);
+async function findActiveRoutesBySourcePhone(channel, sourcePhone) {
+  const nextChannel = contactsService.normalizeChannel(channel);
+  const key = normalizeContactKey(nextChannel, sourcePhone);
   if (!key) return [];
   const rows = await listRoutes();
-  return rows.filter((row) => row.enabled && row.sourcePhone === key);
+  return rows.filter((row) => row.enabled && row.channel === nextChannel && row.sourcePhone === key);
 }
 
 async function markRouteResponded(routeId) {
@@ -153,28 +156,18 @@ async function disableRoutesByTaskId(taskId) {
   return changed;
 }
 
-function dedupByDestinationLatest(rows) {
-  const dedup = new Map();
-  for (const row of rows || []) {
-    if (!row.destinationPhone) continue;
-    if (!dedup.has(row.destinationPhone)) {
-      dedup.set(row.destinationPhone, row);
-    }
-  }
-  return Array.from(dedup.values());
-}
-
 function getRouteEventTimeMs(row) {
   const at = new Date(row.lastOutboundAt || row.updatedAt || row.createdAt || 0).getTime();
   return Number.isFinite(at) ? at : 0;
 }
 
 async function findRoutesForIncoming({
+  channel = "whatsapp",
   sourcePhone,
   quotedMessageId,
   maxAgeHours = 168,
 }) {
-  const active = await findActiveRoutesBySourcePhone(sourcePhone);
+  const active = await findActiveRoutesBySourcePhone(channel, sourcePhone);
   if (!active || active.length === 0) {
     return { routes: [], strategy: "none" };
   }
@@ -202,18 +195,13 @@ async function findRoutesForIncoming({
         strategy: "quoted_message_id",
       };
     }
-    // Si el usuario respondio a un mensaje puntual, no aplicar fallback por recencia:
-    // evita mezclar con rutas antiguas de otras tareas.
     return { routes: [], strategy: "quoted_no_match" };
   }
 
   const hours = Number.parseInt(String(maxAgeHours), 10);
   const ttlHours = Number.isFinite(hours) && hours > 0 ? hours : 24;
   const cutoffMs = Date.now() - ttlHours * 60 * 60 * 1000;
-  const byRecency = sortedActive.filter((row) => {
-    const at = getRouteEventTimeMs(row);
-    return at >= cutoffMs;
-  });
+  const byRecency = sortedActive.filter((row) => getRouteEventTimeMs(row) >= cutoffMs);
   if (byRecency.length === 0) {
     return { routes: [], strategy: "recency_no_match" };
   }

@@ -1,0 +1,67 @@
+<div class="card module-card">
+  <div class="card-header">
+    <h2>Proveedor activo</h2>
+  </div>
+
+  <form id="messagingChannelForm" class="form-grid">
+    <label class="field">
+      <span>Canal</span>
+      <select id="activeChannel" name="activeChannel">
+        <option value="whatsapp" <%= activeChannel === "whatsapp" ? "selected" : "" %>>WhatsApp</option>
+        <option value="telegram" <%= activeChannel === "telegram" ? "selected" : "" %>>Telegram</option>
+      </select>
+    </label>
+    <div class="inline-actions">
+      <button class="primary-button" type="submit">Guardar canal</button>
+      <span id="messagingMsg" class="note"></span>
+    </div>
+  </form>
+</div>
+
+<div class="card module-card mt-16">
+  <div class="card-header">
+    <h2>Estado general</h2>
+    <button id="refreshMessagingBtn" class="icon-button" type="button" title="Actualizar estado">↻</button>
+  </div>
+  <div class="status-grid">
+    <div class="status-panel <%= activeChannel === 'whatsapp' ? 'status-panel-active' : '' %>">
+      <h3>WhatsApp</h3>
+      <p><strong>Estado:</strong> <span id="waStatusText"><%= providers.whatsapp.statusText %></span></p>
+      <p><strong>Celular:</strong> <span id="waPhoneText"><%= providers.whatsapp.phoneNumber || "Sin vincular" %></span></p>
+      <div id="waQrContainer" class="qr-container compact">
+        <% if (providers.whatsapp.qrDataUrl) { %>
+        <img src="<%= providers.whatsapp.qrDataUrl %>" alt="QR de WhatsApp" />
+        <% } else if (providers.whatsapp.linked) { %>
+        <p>Ya vinculado.</p>
+        <% } else { %>
+        <p>QR no disponible por el momento.</p>
+        <% } %>
+      </div>
+      <div class="inline-actions mt-16">
+        <button id="refreshWhatsappBtn" class="secondary-button" type="button">Refrescar QR</button>
+      </div>
+      <p class="note">La sesion sigue usando el flujo actual de WhatsApp Web.</p>
+    </div>
+
+    <div class="status-panel <%= activeChannel === 'telegram' ? 'status-panel-active' : '' %>">
+      <h3>Telegram</h3>
+      <p><strong>Estado:</strong> <span id="tgStatusText"><%= providers.telegram.statusText %></span></p>
+      <p><strong>Bot:</strong> <span id="tgBotText"><%= providers.telegram.botUsername || settings.telegramBotUsername || "Sin configurar" %></span></p>
+      <form id="telegramConfigForm" class="form-grid">
+        <label class="field">
+          <span>Bot token</span>
+          <input id="telegramBotToken" name="telegramBotToken" type="password" placeholder="123456:ABC..." />
+        </label>
+        <label class="field">
+          <span>Bot username</span>
+          <input id="telegramBotUsername" name="telegramBotUsername" type="text" value="<%= settings.telegramBotUsername || '' %>" placeholder="mi_bot" />
+        </label>
+        <div class="inline-actions">
+          <button class="secondary-button" type="submit">Guardar Telegram</button>
+          <button id="refreshTelegramBtn" class="secondary-button" type="button">Reiniciar bot</button>
+        </div>
+      </form>
+      <p class="note">Cada usuaria debe iniciar chat con el bot y el bot debe estar agregado a los grupos.</p>
+    </div>
+  </div>
+</div>

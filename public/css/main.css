@@ -165,8 +165,30 @@ body {
   max-width: 100%;
 }
 
+.qr-container.compact {
+  min-height: 180px;
+}
+
 .status-wrap p {
   margin: 0 0 10px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.status-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fbfcfd;
+}
+
+.status-panel-active {
+  border-color: #86efac;
+  box-shadow: inset 0 0 0 1px #bbf7d0;
 }
 
 .note {

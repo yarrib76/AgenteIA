@@ -10,7 +10,7 @@
         <option value="">Seleccionar...</option>
         <% contacts.forEach(function(contact) { %>
         <option value="<%= contact.id %>" <%= selectedContactId === contact.id ? "selected" : "" %>>
-          <%= contact.name %> [<%= contact.type === "group" ? "Grupo" : "Usuario" %>] (<%= contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone %>)
+          <%= contact.name %> [<%= contact.type === "group" ? "Grupo" : "Usuario" %>] (<%= activeChannel === "telegram" ? (contact.type === "group" ? (contact.telegramGroupId || "-") : (contact.telegramUserId || "-")) : (contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone) %>)
         </option>
         <% }) %>
       </select>
@@ -21,7 +21,12 @@
   </div>
 
   <div id="chatStatus" class="note">
-    <% if (whatsappReady) { %> WhatsApp vinculado. <% } else { %> WhatsApp no vinculado. <% } %>
+    <% if (channelReady) { %>
+      <%= activeChannel === "telegram" ? "Telegram activo." : "WhatsApp vinculado." %>
+    <% } else { %>
+      <%= activeChannel === "telegram" ? "Telegram no configurado." : "WhatsApp no vinculado." %>
+    <% } %>
+    <% if (!selectedContactConfigured) { %> El contacto seleccionado no esta configurado para este canal. <% } %>
   </div>
 
   <div id="chatWindow" class="chat-window">
@@ -38,7 +43,9 @@
   </div>
 
   <form id="chatForm" class="chat-form">
-    <input type="text" id="chatInput" maxlength="2000" placeholder="Escribe un mensaje..." required />
-    <button class="primary-button" type="submit">Enviar</button>
+    <input type="hidden" id="activeChannel" value="<%= activeChannel %>" />
+    <input type="hidden" id="selectedContactConfigured" value="<%= selectedContactConfigured ? 'true' : 'false' %>" />
+    <input type="text" id="chatInput" maxlength="2000" placeholder="Escribe un mensaje..." required <%= selectedContactConfigured ? "" : "disabled" %> />
+    <button class="primary-button" type="submit" <%= selectedContactConfigured ? "" : "disabled" %>>Enviar</button>
   </form>
 </div>

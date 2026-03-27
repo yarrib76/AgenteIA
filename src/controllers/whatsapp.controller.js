@@ -1,29 +1,25 @@
-const whatsappService = require("../modules/whatsapp/whatsapp.state");
-const whatsappGateway = require("../modules/whatsapp/whatsapp.gateway");
+const messagingController = require("./messaging.controller");
+const messagingGateway = require("../modules/messaging/messaging.gateway");
 
-function renderDashboard(req, res) {
-  const status = whatsappService.getPublicStatus();
-
-  res.render("layouts/main", {
-    pageTitle: "Panel Multi Agente IA",
-    activeMenu: "whatsapp-link",
-    headerTitle: "Vincular Whatsapp",
-    moduleView: "whatsapp-link",
-    moduleData: { status },
-    pageScripts: ["/socket.io/socket.io.js", "/js/whatsapp-link.js"],
-  });
+async function renderDashboard(req, res) {
+  return messagingController.renderMessagingPage(req, res);
 }
 
-function getStatus(req, res) {
-  res.json(whatsappService.getPublicStatus());
+async function getStatus(req, res) {
+  try {
+    const status = await messagingGateway.getProviderStatus("whatsapp");
+    res.json(status);
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message });
+  }
 }
 
 async function refreshQr(req, res) {
   try {
-    await whatsappService.refreshQr();
+    await messagingGateway.refreshLink({ channel: "whatsapp" });
     res.json({
       ok: true,
-      status: whatsappService.getPublicStatus(),
+      status: await messagingGateway.getProviderStatus("whatsapp"),
       message: "Solicitud de refresco enviada.",
     });
   } catch (error) {
@@ -37,7 +33,7 @@ async function refreshQr(req, res) {
 
 async function listGroups(req, res) {
   try {
-    const groups = await whatsappGateway.listGroups();
+    const groups = await messagingGateway.listGroups({ channel: "whatsapp" });
     res.json({ ok: true, groups });
   } catch (error) {
     res.status(400).json({ ok: false, message: error.message });

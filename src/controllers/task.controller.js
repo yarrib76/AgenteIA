@@ -5,6 +5,7 @@ const modelsService = require("../modules/model/models.service");
 const filesService = require("../modules/file/files.service");
 const contactsService = require("../modules/agenda/contacts.service");
 const integrationsService = require("../modules/integration/api-integrations.service");
+const messagingGateway = require("../modules/messaging/messaging.gateway");
 
 function formatDateTime(value, timeZone) {
   if (!value) return "-";
@@ -35,6 +36,7 @@ async function renderNewTaskPage(req, res) {
     contactsService.listContacts(),
     integrationsService.listIntegrations(),
   ]);
+  const activeChannel = await messagingGateway.getChannel();
   const tasks = rawTasks.map((task) => ({
     ...task,
     nextRunAtFormatted: formatDateTime(task.nextRunAt, task.scheduleTimezone),
@@ -53,6 +55,7 @@ async function renderNewTaskPage(req, res) {
       files,
       contacts,
       integrations,
+      activeChannel,
     },
     pageScripts: ["/js/task-new.js"],
   });

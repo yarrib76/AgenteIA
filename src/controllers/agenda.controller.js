@@ -1,13 +1,15 @@
 const contactsService = require("../modules/agenda/contacts.service");
+const messagingGateway = require("../modules/messaging/messaging.gateway");
 
 async function renderAgendaPage(req, res) {
   const contacts = await contactsService.listContacts();
+  const activeChannel = await messagingGateway.getChannel();
   res.render("layouts/main", {
     pageTitle: "Agenda - Panel Multi Agente IA",
     activeMenu: "agenda",
     headerTitle: "Agenda",
     moduleView: "agenda",
-    moduleData: { contacts },
+    moduleData: { contacts, activeChannel },
     pageScripts: ["/js/agenda.js"],
   });
 }
