@@ -41,6 +41,7 @@
   const tasksPageInfo = document.getElementById("tasksPageInfo");
   const tasksColumnStorageKey = "tasks_table_columns_v1";
   const logsTimeZone = "America/Argentina/Buenos_Aires";
+  const isInternalChat = Boolean(document.body.dataset.activeChannel === "internal_chat");
 
   if (!taskForm) return;
 
@@ -62,6 +63,15 @@
       selected.length > 0
         ? `Seleccionados (${selected.length}): ${selected.join(", ")}`
         : "Sin grupos seleccionados.";
+  }
+
+  function setReplyRoutingFieldsState() {
+    if (taskAllowedGroupContactIdsInput) {
+      taskAllowedGroupContactIdsInput.disabled = isInternalChat;
+    }
+    if (taskAllowedGroupsPreview && isInternalChat) {
+      taskAllowedGroupsPreview.textContent = "No aplica en chat interno v1.";
+    }
   }
 
   function enableSimpleMultiToggle(selectEl) {
@@ -717,4 +727,5 @@
   setScheduleFieldsState();
   refreshAllowedGroupsPreview();
   initTasksDataTable();
+  setReplyRoutingFieldsState();
 })();

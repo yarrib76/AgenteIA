@@ -9,6 +9,7 @@
       <select id="activeChannel" name="activeChannel">
         <option value="whatsapp" <%= activeChannel === "whatsapp" ? "selected" : "" %>>WhatsApp</option>
         <option value="telegram" <%= activeChannel === "telegram" ? "selected" : "" %>>Telegram</option>
+        <option value="internal_chat" <%= activeChannel === "internal_chat" ? "selected" : "" %>>Chat interno</option>
       </select>
     </label>
     <div class="inline-actions">
@@ -62,6 +63,19 @@
         </div>
       </form>
       <p class="note">Cada usuaria debe iniciar chat con el bot y el bot debe estar agregado a los grupos.</p>
+    </div>
+
+    <div class="status-panel <%= activeChannel === 'internal_chat' ? 'status-panel-active' : '' %>">
+      <h3>Chat interno</h3>
+      <p><strong>Estado:</strong> <span id="icStatusText"><%= providers.internal_chat.statusText %></span></p>
+      <p><strong>Usuarios:</strong> <span id="icUsersCount"><%= providers.internal_chat.usersCount || 0 %></span></p>
+      <form id="internalChatConfigForm" class="form-grid">
+        <p class="note">Usa usuarios internos existentes del sistema. Este provider no requiere QR ni bot externo.</p>
+        <div class="inline-actions">
+          <button class="secondary-button" type="submit">Validar provider</button>
+          <button id="refreshInternalChatBtn" class="secondary-button" type="button">Actualizar estado</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>

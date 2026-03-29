@@ -6,6 +6,17 @@ npm-debug.log*
 .env
 .env.*
 
+# Toolchains locales para compilar Android
+tools/
+
+# Proyecto Android: ignorar artefactos y secretos
+android-app/.gradle/
+android-app/local.properties
+android-app/**/build/
+android-app/app/google-services.json
+android-app/.idea/
+android-app/*.iml
+
 # Mantener estructura de carpetas sin contenido runtime
 archivos/*
 !archivos/.gitkeep

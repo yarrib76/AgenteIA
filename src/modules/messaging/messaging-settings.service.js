@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
 
 function normalizeChannel(value) {
   const channel = String(value || "").trim().toLowerCase();
+  if (channel === "internal_chat") return "internal_chat";
   return channel === "telegram" ? "telegram" : "whatsapp";
 }
 
@@ -62,6 +63,7 @@ async function getPublicSettings() {
     telegramBotConfigured: Boolean(settings.telegramBotToken),
     telegramBotUsername: settings.telegramBotUsername || "",
     telegramPollIntervalMs: settings.telegramPollIntervalMs,
+    internalChatEnabled: true,
   };
 }
 

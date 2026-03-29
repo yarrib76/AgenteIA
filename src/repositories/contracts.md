@@ -10,6 +10,22 @@ Este archivo documenta los contratos de persistencia para permitir cambiar de JS
 - `list(): Promise<MessageRow[]>`
 - `saveAll(messages: MessageRow[]): Promise<void>`
 
+## InternalConversationsRepository
+- `list(): Promise<ConversationRow[]>`
+- `saveAll(rows: ConversationRow[]): Promise<void>`
+
+## InternalMessagesRepository
+- `list(): Promise<InternalMessageRow[]>`
+- `saveAll(rows: InternalMessageRow[]): Promise<void>`
+
+## DeviceTokensRepository
+- `list(): Promise<DeviceTokenRow[]>`
+- `saveAll(rows: DeviceTokenRow[]): Promise<void>`
+
+## MobileAuthTokensRepository
+- `list(): Promise<MobileAuthTokenRow[]>`
+- `saveAll(rows: MobileAuthTokenRow[]): Promise<void>`
+
 ## ContactAliasesRepository
 - `list(): Promise<ContactAliasRow[]>`
 - `saveAll(rows: ContactAliasRow[]): Promise<void>`

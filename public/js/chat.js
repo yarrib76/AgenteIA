@@ -81,8 +81,14 @@
       if (selectedContactConfiguredInput) {
         selectedContactConfiguredInput.value = configured ? "true" : "false";
       }
+      const channelLabel =
+        activeChannelInput && activeChannelInput.value === "telegram"
+          ? "Telegram"
+          : activeChannelInput && activeChannelInput.value === "internal_chat"
+            ? "interna"
+            : "WhatsApp";
       chatStatus.textContent = configured
-        ? `Conversacion ${activeChannelInput && activeChannelInput.value === "telegram" ? "Telegram" : "WhatsApp"} con ${data.contact.name}`
+        ? `Conversacion ${channelLabel} con ${data.contact.name}`
         : `El contacto ${data.contact.name} no esta configurado para este canal.`;
     } catch (error) {
       chatStatus.textContent = error.message;

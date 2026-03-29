@@ -6,7 +6,7 @@
     <title><%= pageTitle %></title>
     <link rel="stylesheet" href="/css/main.css" />
   </head>
-  <body>
+<body data-active-channel="<%= moduleData && moduleData.activeChannel ? moduleData.activeChannel : '' %>">
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">Agente IA</div>

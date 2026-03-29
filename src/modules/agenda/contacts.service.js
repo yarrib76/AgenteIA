@@ -23,7 +23,10 @@ function normalizeContactType(type) {
 }
 
 function normalizeChannel(channel) {
-  return String(channel || "").trim().toLowerCase() === "telegram" ? "telegram" : "whatsapp";
+  const value = String(channel || "").trim().toLowerCase();
+  if (value === "telegram") return "telegram";
+  if (value === "internal_chat") return "internal_chat";
+  return "whatsapp";
 }
 
 function toNormalizedContact(contact) {
@@ -50,6 +53,7 @@ function toNormalizedContact(contact) {
 function normalizeTarget(channel, value) {
   const nextChannel = normalizeChannel(channel);
   if (nextChannel === "telegram") return normalizeTelegramId(value);
+  if (nextChannel === "internal_chat") return String(value || "").trim();
   const raw = String(value || "").trim();
   if (!raw) return "";
   if (raw.endsWith("@g.us")) return raw;

@@ -5,12 +5,16 @@
 
   <div class="chat-toolbar">
     <label class="field">
-      <span>Contacto</span>
+      <span><%= activeChannel === "internal_chat" ? "Usuario" : "Contacto" %></span>
       <select id="contactSelect">
         <option value="">Seleccionar...</option>
         <% contacts.forEach(function(contact) { %>
         <option value="<%= contact.id %>" <%= selectedContactId === contact.id ? "selected" : "" %>>
-          <%= contact.name %> [<%= contact.type === "group" ? "Grupo" : "Usuario" %>] (<%= activeChannel === "telegram" ? (contact.type === "group" ? (contact.telegramGroupId || "-") : (contact.telegramUserId || "-")) : (contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone) %>)
+          <% if (activeChannel === "internal_chat") { %>
+            <%= contact.name %>
+          <% } else { %>
+            <%= contact.name %> [<%= contact.type === "group" ? "Grupo" : "Usuario" %>] (<%= activeChannel === "telegram" ? (contact.type === "group" ? (contact.telegramGroupId || "-") : (contact.telegramUserId || "-")) : (contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone) %>)
+          <% } %>
         </option>
         <% }) %>
       </select>
@@ -22,9 +26,9 @@
 
   <div id="chatStatus" class="note">
     <% if (channelReady) { %>
-      <%= activeChannel === "telegram" ? "Telegram activo." : "WhatsApp vinculado." %>
+      <%= activeChannel === "telegram" ? "Telegram activo." : activeChannel === "internal_chat" ? "Chat interno activo." : "WhatsApp vinculado." %>
     <% } else { %>
-      <%= activeChannel === "telegram" ? "Telegram no configurado." : "WhatsApp no vinculado." %>
+      <%= activeChannel === "telegram" ? "Telegram no configurado." : activeChannel === "internal_chat" ? "Chat interno no disponible." : "WhatsApp no vinculado." %>
     <% } %>
     <% if (!selectedContactConfigured) { %> El contacto seleccionado no esta configurado para este canal. <% } %>
   </div>

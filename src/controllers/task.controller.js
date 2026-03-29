@@ -6,6 +6,7 @@ const filesService = require("../modules/file/files.service");
 const contactsService = require("../modules/agenda/contacts.service");
 const integrationsService = require("../modules/integration/api-integrations.service");
 const messagingGateway = require("../modules/messaging/messaging.gateway");
+const usersService = require("../modules/auth/users.service");
 
 function formatDateTime(value, timeZone) {
   if (!value) return "-";
@@ -27,7 +28,7 @@ function formatDateTime(value, timeZone) {
 }
 
 async function renderNewTaskPage(req, res) {
-  const [agents, roles, models, rawTasks, files, contacts, integrations] = await Promise.all([
+  const [agents, roles, models, rawTasks, files, contacts, integrations, users] = await Promise.all([
     agentsService.listAgents(),
     rolesService.listRoles(),
     modelsService.listModels(),
@@ -35,6 +36,7 @@ async function renderNewTaskPage(req, res) {
     filesService.listFiles(),
     contactsService.listContacts(),
     integrationsService.listIntegrations(),
+    usersService.listUsers(),
   ]);
   const activeChannel = await messagingGateway.getChannel();
   const tasks = rawTasks.map((task) => ({
@@ -55,6 +57,10 @@ async function renderNewTaskPage(req, res) {
       files,
       contacts,
       integrations,
+      users: (users || []).map((user) => ({
+        id: user.id,
+        email: user.email,
+      })),
       activeChannel,
     },
     pageScripts: ["/js/task-new.js"],

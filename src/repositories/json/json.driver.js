@@ -7,6 +7,10 @@ function createJsonDriver() {
     messages: path.join(process.cwd(), "data", "messages.json"),
     messagingSettings: path.join(process.cwd(), "data", "messaging_settings.json"),
     telegramChats: path.join(process.cwd(), "data", "telegram_chats.json"),
+    internalConversations: path.join(process.cwd(), "data", "internal_conversations.json"),
+    internalMessages: path.join(process.cwd(), "data", "internal_messages.json"),
+    deviceTokens: path.join(process.cwd(), "data", "device_tokens.json"),
+    mobileAuthTokens: path.join(process.cwd(), "data", "mobile_auth_tokens.json"),
     aliases: path.join(process.cwd(), "data", "contact_aliases.json"),
     roles: path.join(process.cwd(), "data", "roles.json"),
     agents: path.join(process.cwd(), "data", "agents.json"),
@@ -39,6 +43,22 @@ function createJsonDriver() {
     telegramChats: {
       list: () => readJson(files.telegramChats, []),
       saveAll: (rows) => writeJson(files.telegramChats, rows),
+    },
+    internalConversations: {
+      list: () => readJson(files.internalConversations, []),
+      saveAll: (rows) => writeJson(files.internalConversations, rows),
+    },
+    internalMessages: {
+      list: () => readJson(files.internalMessages, []),
+      saveAll: (rows) => writeJson(files.internalMessages, rows),
+    },
+    deviceTokens: {
+      list: () => readJson(files.deviceTokens, []),
+      saveAll: (rows) => writeJson(files.deviceTokens, rows),
+    },
+    mobileAuthTokens: {
+      list: () => readJson(files.mobileAuthTokens, []),
+      saveAll: (rows) => writeJson(files.mobileAuthTokens, rows),
     },
     contactAliases: {
       list: () => readJson(files.aliases, []),

@@ -10,6 +10,10 @@
   const waQrContainer = document.getElementById("waQrContainer");
   const tgStatusText = document.getElementById("tgStatusText");
   const tgBotText = document.getElementById("tgBotText");
+  const icStatusText = document.getElementById("icStatusText");
+  const icUsersCount = document.getElementById("icUsersCount");
+  const internalChatConfigForm = document.getElementById("internalChatConfigForm");
+  const refreshInternalChatBtn = document.getElementById("refreshInternalChatBtn");
 
   if (!channelForm) return;
 
@@ -17,6 +21,7 @@
     if (!payload || !payload.providers) return;
     const wa = payload.providers.whatsapp || {};
     const tg = payload.providers.telegram || {};
+    const ic = payload.providers.internal_chat || {};
 
     if (waStatusText) waStatusText.textContent = wa.statusText || "Sin estado";
     if (waPhoneText) waPhoneText.textContent = wa.phoneNumber || "Sin vincular";
@@ -32,6 +37,8 @@
 
     if (tgStatusText) tgStatusText.textContent = tg.statusText || "Sin estado";
     if (tgBotText) tgBotText.textContent = tg.botUsername || "Sin configurar";
+    if (icStatusText) icStatusText.textContent = ic.statusText || "Sin estado";
+    if (icUsersCount) icUsersCount.textContent = String(ic.usersCount || 0);
   }
 
   async function fetchStatus() {
@@ -90,6 +97,26 @@
     });
   }
 
+  if (internalChatConfigForm) {
+    internalChatConfigForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      messagingMsg.textContent = "Validando chat interno...";
+      try {
+        const response = await fetch("/api/messaging/internal-chat/config", {
+          method: "POST",
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          throw new Error(data.message || "No se pudo validar el provider.");
+        }
+        messagingMsg.textContent = "Chat interno disponible.";
+        renderStatus(data);
+      } catch (error) {
+        messagingMsg.textContent = error.message;
+      }
+    });
+  }
+
   async function refreshProvider(channel) {
     const response = await fetch("/api/messaging/refresh", {
       method: "POST",
@@ -129,6 +156,17 @@
         messagingMsg.textContent = "Reiniciando Telegram...";
         await refreshProvider("telegram");
         messagingMsg.textContent = "Telegram actualizado.";
+      } catch (error) {
+        messagingMsg.textContent = error.message;
+      }
+    });
+  }
+  if (refreshInternalChatBtn) {
+    refreshInternalChatBtn.addEventListener("click", async () => {
+      try {
+        messagingMsg.textContent = "Actualizando chat interno...";
+        await refreshProvider("internal_chat");
+        messagingMsg.textContent = "Chat interno actualizado.";
       } catch (error) {
         messagingMsg.textContent = error.message;
       }

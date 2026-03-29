@@ -89,6 +89,7 @@ async function getAllProviderStatuses() {
   return {
     whatsapp: await getProviderStatus("whatsapp"),
     telegram: await getProviderStatus("telegram"),
+    internal_chat: await getProviderStatus("internal_chat"),
   };
 }
 

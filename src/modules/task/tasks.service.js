@@ -2,6 +2,7 @@ const { randomUUID } = require("crypto");
 const { getRepositories } = require("../../repositories/repository-provider");
 const agentsService = require("../agent/agents.service");
 const rolesService = require("../agent/roles.service");
+const usersService = require("../auth/users.service");
 const filesService = require("../file/files.service");
 const modelsService = require("../model/models.service");
 const modelTestService = require("../model/model-test.service");
@@ -340,6 +341,19 @@ function buildContactsReferenceText(contacts) {
   ].join("\n");
 }
 
+function buildUsersReferenceText(users) {
+  const rows = Array.isArray(users) ? users : [];
+  if (rows.length === 0) return "";
+  const compact = rows.slice(0, 200).map((u) => ({
+    id: u.id,
+    email: u.email,
+  }));
+  return [
+    "Usuarios internos disponibles (usar userId o contactId cuando corresponda):",
+    JSON.stringify(compact),
+  ].join("\n");
+}
+
 function buildIntegrationsReferenceText(integrations) {
   const rows = Array.isArray(integrations) ? integrations : [];
   if (rows.length === 0) return "";
@@ -470,6 +484,7 @@ async function createTask({
   scheduleTime,
   scheduleTimezone,
 }) {
+  const activeChannel = await messagingGateway.getChannel();
   const nextAgentId = normalizeText(agentId);
   const nextTaskPromptTemplate = normalizeText(taskPromptTemplate);
   const nextTaskInput = normalizeText(taskInput);
@@ -477,7 +492,9 @@ async function createTask({
   const nextIntegrationId = normalizeText(integrationId);
   const nextResponseContactId = normalizeText(responseContactId);
   const nextReplyRoutingMode = normalizeReplyRoutingMode(replyRoutingMode, nextResponseContactId);
-  const nextAllowedGroupContactIds = normalizeIdList(allowedGroupContactIds);
+  const nextAllowedGroupContactIds = activeChannel === "internal_chat"
+    ? []
+    : normalizeIdList(allowedGroupContactIds);
   const schedule = buildSchedulePayload({
     scheduleEnabled,
     scheduleDays,
@@ -502,14 +519,25 @@ async function createTask({
 
   if (nextReplyRoutingMode === "contact") {
     if (!nextResponseContactId) {
-      throw new Error("Debes seleccionar un contacto destino de respuesta o usar Sin ruteo.");
+      throw new Error(
+        activeChannel === "internal_chat"
+          ? "Debes seleccionar un usuario destino de respuesta o usar Sin ruteo."
+          : "Debes seleccionar un contacto destino de respuesta o usar Sin ruteo."
+      );
     }
-    const targetContact = await contactsService.getContactById(nextResponseContactId);
-    if (!targetContact) {
-      throw new Error("Contacto destino de respuesta invalido.");
+    if (activeChannel === "internal_chat") {
+      const targetUser = await usersService.getUserById(nextResponseContactId);
+      if (!targetUser) {
+        throw new Error("Usuario destino de respuesta invalido.");
+      }
+    } else {
+      const targetContact = await contactsService.getContactById(nextResponseContactId);
+      if (!targetContact) {
+        throw new Error("Contacto destino de respuesta invalido.");
+      }
     }
   }
-  if (nextAllowedGroupContactIds.length > 0) {
+  if (activeChannel !== "internal_chat" && nextAllowedGroupContactIds.length > 0) {
     const allContacts = await contactsService.listContacts();
     for (const contactId of nextAllowedGroupContactIds) {
       const group = allContacts.find((c) => c.id === contactId);
@@ -585,6 +613,7 @@ async function updateTask(
     scheduleTimezone,
   }
 ) {
+  const activeChannel = await messagingGateway.getChannel();
   const nextAgentId = normalizeText(agentId);
   const nextTaskPromptTemplate = normalizeText(taskPromptTemplate);
   const nextTaskInput = normalizeText(taskInput);
@@ -592,7 +621,9 @@ async function updateTask(
   const nextIntegrationId = normalizeText(integrationId);
   const nextResponseContactId = normalizeText(responseContactId);
   const nextReplyRoutingMode = normalizeReplyRoutingMode(replyRoutingMode, nextResponseContactId);
-  const nextAllowedGroupContactIds = normalizeIdList(allowedGroupContactIds);
+  const nextAllowedGroupContactIds = activeChannel === "internal_chat"
+    ? []
+    : normalizeIdList(allowedGroupContactIds);
   const schedule = buildSchedulePayload({
     scheduleEnabled,
     scheduleDays,
@@ -618,14 +649,25 @@ async function updateTask(
 
   if (nextReplyRoutingMode === "contact") {
     if (!nextResponseContactId) {
-      throw new Error("Debes seleccionar un contacto destino de respuesta o usar Sin ruteo.");
+      throw new Error(
+        activeChannel === "internal_chat"
+          ? "Debes seleccionar un usuario destino de respuesta o usar Sin ruteo."
+          : "Debes seleccionar un contacto destino de respuesta o usar Sin ruteo."
+      );
     }
-    const targetContact = await contactsService.getContactById(nextResponseContactId);
-    if (!targetContact) {
-      throw new Error("Contacto destino de respuesta invalido.");
+    if (activeChannel === "internal_chat") {
+      const targetUser = await usersService.getUserById(nextResponseContactId);
+      if (!targetUser) {
+        throw new Error("Usuario destino de respuesta invalido.");
+      }
+    } else {
+      const targetContact = await contactsService.getContactById(nextResponseContactId);
+      if (!targetContact) {
+        throw new Error("Contacto destino de respuesta invalido.");
+      }
     }
   }
-  if (nextAllowedGroupContactIds.length > 0) {
+  if (activeChannel !== "internal_chat" && nextAllowedGroupContactIds.length > 0) {
     const allContacts = await contactsService.listContacts();
     for (const contactId of nextAllowedGroupContactIds) {
       const group = allContacts.find((c) => c.id === contactId);
@@ -767,6 +809,17 @@ async function resolveContactFromAction(action) {
     if (byId) return byId;
   }
   return resolveContact(action && action.contact);
+}
+
+async function resolveInternalUserFromAction(action) {
+  const explicitUserId = normalizeText(action && (action.userId || action.contactId));
+  if (explicitUserId) {
+    const byId = await usersService.getUserById(explicitUserId);
+    if (byId) return byId;
+  }
+  return usersService.getUserByEmail
+    ? (await usersService.getUserByEmail(action && action.contact)) || (await usersService.getUserByEmail(action && action.user))
+    : null;
 }
 
 async function resolveIntegrationFromAction(task, action) {
@@ -1368,6 +1421,13 @@ async function applyGlobalGuardrails({
   apiResults,
   allowNoWhatsappOnNoData,
 }) {
+  const activeChannel = await messagingGateway.getChannel();
+  if (activeChannel === "internal_chat") {
+    return {
+      parsed,
+      warnings: [],
+    };
+  }
   const warnings = [];
   const contacts = Array.isArray(availableContacts) ? availableContacts : [];
   const allowedGroupContactIds = new Set(normalizeIdList(task && task.allowedGroupContactIds));
@@ -1452,14 +1512,30 @@ async function applyGlobalGuardrails({
 }
 
 async function executeSendMessageAction(task, action, context, resolvedContact) {
-  const contact = resolvedContact || (await resolveContactFromAction(action));
   const activeChannel = await messagingGateway.getChannel();
-  const contactTarget = contactsService.getContactMessageTarget(contact, activeChannel);
   const roleDetail = normalizeText(context && context.role ? context.role.detail : "");
   const message = normalizeText(action.message);
   if (!message) throw new Error("Accion send_message sin mensaje.");
-  if (!contactTarget) {
-    throw new Error("El contacto no esta configurado para el canal activo.");
+  let contact = resolvedContact || null;
+  let contactTarget = "";
+  if (activeChannel === "internal_chat") {
+    const internalUser = contact || (await usersService.getUserById(normalizeText(action && (action.userId || action.contactId))));
+    const resolvedUser = internalUser || (await usersService.getUserByEmail(normalizeText(action && action.contact))) || null;
+    if (!resolvedUser) {
+      throw new Error("No se pudo resolver el usuario interno destino.");
+    }
+    contact = {
+      id: resolvedUser.id,
+      name: resolvedUser.email,
+      type: "user",
+    };
+    contactTarget = resolvedUser.id;
+  } else {
+    contact = contact || (await resolveContactFromAction(action));
+    contactTarget = contactsService.getContactMessageTarget(contact, activeChannel);
+    if (!contactTarget) {
+      throw new Error("El contacto no esta configurado para el canal activo.");
+    }
   }
   const withTraceTag = parseBool(process.env.TASK_REPLY_APPEND_TID || "false");
   const tidTag = task && task.id ? `[TID:${String(task.id).slice(0, 8)}]` : "";
@@ -1467,18 +1543,21 @@ async function executeSendMessageAction(task, action, context, resolvedContact) 
 
   const sendResult = await messagingGateway.sendMessage(contactTarget, finalMessage, {
     channel: activeChannel,
+    senderUserId: context && context.actorUserId ? context.actorUserId : "",
   });
-  await messagesService.addMessage({
-    channel: activeChannel,
-    contactPhone: contactTarget,
-    direction: "out",
-    text: finalMessage,
-    status: "sent",
-    providerMessageId: String(sendResult && sendResult.messageId || ""),
-  });
+  if (activeChannel !== "internal_chat") {
+    await messagesService.addMessage({
+      channel: activeChannel,
+      contactPhone: contactTarget,
+      direction: "out",
+      text: finalMessage,
+      status: "sent",
+      providerMessageId: String(sendResult && sendResult.messageId || ""),
+    });
+  }
 
   let replyRoute = null;
-  if (task && task.replyRoutingMode === "contact") {
+  if (activeChannel !== "internal_chat" && task && task.replyRoutingMode === "contact") {
     if (!task.responseContactId) {
       throw new Error("La tarea tiene ruteo a contacto pero no tiene responseContactId.");
     }
@@ -1498,7 +1577,7 @@ async function executeSendMessageAction(task, action, context, resolvedContact) 
       lastOutboundMessageId: String(sendResult && sendResult.messageId ? sendResult.messageId : ""),
       lastOutboundAt: new Date().toISOString(),
     });
-  } else if (task && task.replyRoutingMode === "none") {
+  } else if (activeChannel !== "internal_chat" && task && task.replyRoutingMode === "none") {
     await taskReplyRoutesService.upsertRouteForTask({
       taskId: task.id,
       channel: activeChannel,
@@ -1538,6 +1617,7 @@ async function executeActions(task, parsed, context) {
   const actions = Array.isArray(parsed.actions) ? parsed.actions : [];
   const results = [];
   const policy = (context && context.actionPolicy) || null;
+  const activeChannel = await messagingGateway.getChannel();
 
   for (let i = 0; i < actions.length; i += 1) {
     const action = actions[i] || {};
@@ -1545,7 +1625,7 @@ async function executeActions(task, parsed, context) {
 
     if (normalizeActionType(type) === "send_message") {
       let resolvedContact = null;
-      if (policy && policy.onlyVendors === true) {
+      if (activeChannel !== "internal_chat" && policy && policy.onlyVendors === true) {
         try {
           resolvedContact = await resolveContactFromAction(action);
         } catch (error) {
@@ -1675,8 +1755,10 @@ async function executeTask(taskId, options = {}) {
     let runtimeFileContext = "";
     let fileAttachment = null;
     const todayContextText = buildTodayContextText("America/Argentina/Buenos_Aires");
+    const activeChannel = await messagingGateway.getChannel();
     const hasConfiguredIntegration = Boolean(normalizeText(task.integrationId));
     const availableContacts = await contactsService.listContacts();
+    const availableUsers = await usersService.listUsers();
     let availableIntegrations = [];
     if (hasConfiguredIntegration) {
       const configuredIntegration = await integrationsService.getIntegrationById(task.integrationId);
@@ -1685,7 +1767,9 @@ async function executeTask(taskId, options = {}) {
       }
       availableIntegrations = [configuredIntegration];
     }
-    const contactsReferenceText = buildContactsReferenceText(availableContacts);
+    const contactsReferenceText = activeChannel === "internal_chat"
+      ? buildUsersReferenceText(availableUsers)
+      : buildContactsReferenceText(availableContacts);
     const integrationsReferenceText = buildIntegrationsReferenceText(availableIntegrations);
     task = appendLog(task, "execution_route", "ok", "Ruta de ejecucion resuelta", {
       mode: hasConfiguredIntegration ? "api_configured_auto_then_model" : "model_only",
@@ -2001,6 +2085,7 @@ async function executeTask(taskId, options = {}) {
       agent,
       role,
       actionPolicy,
+      actorUserId: null,
     });
     const failedActions = actionResults.filter((a) => !a.ok);
     const okActions = actionResults.filter((a) => a.ok);

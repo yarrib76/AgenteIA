@@ -54,6 +54,14 @@ async function updateTelegramConfig(req, res) {
   }
 }
 
+async function updateInternalChatConfig(req, res) {
+  res.json({
+    ok: true,
+    settings: await messagingSettingsService.getPublicSettings(),
+    providers: await messagingGateway.getAllProviderStatuses(),
+  });
+}
+
 async function refreshProvider(req, res) {
   try {
     const channel = req.body.channel || req.query.channel;
@@ -82,6 +90,7 @@ module.exports = {
   getStatus,
   updateActiveChannel,
   updateTelegramConfig,
+  updateInternalChatConfig,
   refreshProvider,
   listGroups,
 };

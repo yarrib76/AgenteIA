@@ -9,15 +9,27 @@ const modelController = require("../controllers/model.controller");
 const taskController = require("../controllers/task.controller");
 const fileController = require("../controllers/file.controller");
 const integrationController = require("../controllers/integration.controller");
+const mobileController = require("../controllers/mobile.controller");
 const authService = require("../modules/auth/auth.service");
+const mobileAuthMiddleware = require("../modules/mobile/mobile-auth-middleware");
 
 const router = express.Router();
 
 router.get("/login", authController.renderLoginPage);
 router.post("/login", authController.login);
+router.post("/api/mobile/login", mobileController.login);
 router.get("/register", authService.ensureRegistrationAllowed, authController.renderRegisterPage);
 router.post("/register", authService.ensureRegistrationAllowed, authController.register);
 router.post("/logout", authController.logout);
+router.use("/api/mobile", mobileAuthMiddleware.ensureMobileAuthenticated);
+router.post("/api/mobile/logout", mobileController.logout);
+router.get("/api/mobile/me", mobileController.getMe);
+router.get("/api/mobile/conversations", mobileController.listConversations);
+router.get("/api/mobile/conversations/:conversationId/messages", mobileController.getConversationMessages);
+router.post("/api/mobile/conversations/:conversationId/messages", mobileController.sendConversationMessage);
+router.post("/api/mobile/conversations/:conversationId/read", mobileController.markConversationRead);
+router.post("/api/mobile/devices", mobileController.registerDevice);
+router.delete("/api/mobile/devices/:token", mobileController.deleteDevice);
 
 router.use(authService.ensureAuthenticated);
 
@@ -41,6 +53,7 @@ router.get("/api/messaging/status", messagingController.getStatus);
 router.get("/api/messaging/groups", messagingController.listGroups);
 router.post("/api/messaging/channel", messagingController.updateActiveChannel);
 router.post("/api/messaging/telegram/config", messagingController.updateTelegramConfig);
+router.post("/api/messaging/internal-chat/config", messagingController.updateInternalChatConfig);
 router.post("/api/messaging/refresh", messagingController.refreshProvider);
 router.get("/api/contacts", agendaController.listContacts);
 router.post("/api/contacts", agendaController.createContact);
