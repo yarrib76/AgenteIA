@@ -61,6 +61,7 @@ async function renderNewTaskPage(req, res) {
       integrations,
       users: (users || []).map((user) => ({
         id: user.id,
+        name: user.name || "",
         email: user.email,
       })),
       internalGroups: (internalGroups || []).map((group) => ({

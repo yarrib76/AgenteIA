@@ -42,7 +42,9 @@ router.use(authService.ensureAuthenticated);
 router.get("/", messagingController.renderMessagingPage);
 router.get("/whatsapp", messagingController.renderMessagingPage);
 router.get("/mensajeria", messagingController.renderMessagingPage);
-router.get("/usuarios/nuevo", authService.ensureRegistrationAllowed, authController.renderRegisterPage);
+router.get('/usuarios/nuevo', authService.ensureRegistrationAllowed, authController.renderRegisterPage);
+router.post('/usuarios/:userId/actualizar', authController.updateUser);
+router.post('/usuarios/:userId/eliminar', authController.deleteUser);
 router.get("/grupos-internos", internalChatGroupsController.renderGroupsPage);
 router.get("/agenda", agendaController.renderAgendaPage);
 router.get("/chat", chatController.renderChatPage);
@@ -104,3 +106,5 @@ router.put("/api/internal-chat/groups/:groupId", internalChatGroupsController.up
 router.delete("/api/internal-chat/groups/:groupId", internalChatGroupsController.deleteGroup);
 
 module.exports = router;
+
+

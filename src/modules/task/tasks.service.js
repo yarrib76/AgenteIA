@@ -347,6 +347,7 @@ function buildUsersReferenceText(users) {
   if (rows.length === 0) return "";
   const compact = rows.slice(0, 200).map((u) => ({
     id: u.id,
+    name: u.name || "",
     email: u.email,
   }));
   return [
@@ -387,8 +388,9 @@ async function resolveInternalTaskTarget(value) {
     id: user.id,
     storageId: "user:" + user.id,
     target: user.id,
-    name: user.email,
-    label: "[Usuario] " + user.email,
+    name: user.name || user.email,
+    email: user.email,
+    label: "[Usuario] " + (user.name ? (user.name + " (" + user.email + ")") : user.email),
   };
 }
 
@@ -425,8 +427,24 @@ async function resolveInternalTargetFromAction(action, fallbackTargetId = "") {
         id: byEmail.id,
         storageId: "user:" + byEmail.id,
         target: byEmail.id,
-        name: byEmail.email,
-        label: "[Usuario] " + byEmail.email,
+        name: byEmail.name || byEmail.email,
+        email: byEmail.email,
+        label: "[Usuario] " + (byEmail.name ? (byEmail.name + " (" + byEmail.email + ")") : byEmail.email),
+      };
+    }
+    const users = await usersService.listUsers();
+    const normalizedLookupName = contactLookup.toLowerCase();
+    const byName = users.find((user) => String(user.name || "").trim().toLowerCase() === normalizedLookupName)
+      || users.find((user) => String(user.name || "").toLowerCase().includes(normalizedLookupName));
+    if (byName) {
+      return {
+        type: "user",
+        id: byName.id,
+        storageId: "user:" + byName.id,
+        target: byName.id,
+        name: byName.name || byName.email,
+        email: byName.email,
+        label: "[Usuario] " + (byName.name ? (byName.name + " (" + byName.email + ")") : byName.email),
       };
     }
     const groups = await internalChatGroupsService.listGroups();
@@ -473,6 +491,7 @@ function buildInternalTargetsReferenceText(users, groups, responseContactId = ""
         "Usuario destino de respuesta para derivaciones posteriores:\n" + JSON.stringify({
           contactId: "user:" + responseUser.id,
           type: "user",
+          name: responseUser.name || "",
           email: responseUser.email,
         })
       );

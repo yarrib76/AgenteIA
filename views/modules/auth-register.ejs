@@ -1,9 +1,9 @@
-<% const view = typeof authData !== 'undefined' ? authData : { currentUser, error, email, next, success, challenge, users }; %>
+<% const view = typeof authData !== 'undefined' ? authData : { currentUser, error, name, email, next, success, challenge, users }; %>
 <div class="auth-card">
   <div>
     <p class="auth-eyebrow"><%= view.currentUser ? 'Usuarios' : 'Onboarding' %></p>
     <h2 class="auth-title"><%= view.currentUser ? 'Crear nuevo usuario' : 'Crear primer usuario' %></h2>
-    <p class="auth-copy">El email será el identificador de acceso. La contraseña se guarda encriptada localmente.</p>
+    <p class="auth-copy">El nombre ayuda a identificar a la persona dentro del sistema. El email sigue siendo el identificador de acceso.</p>
   </div>
 
   <% if (view.error) { %>
@@ -16,6 +16,10 @@
 
   <form class="auth-form" method="post" action="/register">
     <input type="hidden" name="next" value="<%= view.next %>" />
+    <label class="field">
+      <span>Nombre</span>
+      <input type="text" name="name" value="<%= view.name || '' %>" autocomplete="name" />
+    </label>
     <label class="field">
       <span>Email</span>
       <input type="email" name="email" value="<%= view.email %>" autocomplete="email" required />
@@ -44,22 +48,37 @@
       <% if (!view.users || view.users.length === 0) { %>
         <p class="note">No hay usuarios creados.</p>
       <% } else { %>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Alta</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% view.users.forEach(function(user) { %>
-            <tr>
-              <td><%= user.email %></td>
-              <td><%= user.createdAt || '-' %></td>
-            </tr>
-            <% }) %>
-          </tbody>
-        </table>
+        <div class="stack-list">
+          <% view.users.forEach(function(user) { %>
+          <form method="post" action="/usuarios/<%= user.id %>/actualizar" class="card module-card mb-12">
+            <div class="form-grid">
+              <label class="field">
+                <span>Nombre</span>
+                <input type="text" name="name" value="<%= user.name || '' %>" placeholder="Sin nombre" />
+              </label>
+              <label class="field">
+                <span>Email</span>
+                <input type="email" name="email" value="<%= user.email %>" required />
+              </label>
+              <label class="field">
+                <span>Nueva contraseña</span>
+                <input type="password" name="password" placeholder="Opcional" />
+                <small class="field-hint">Dejá vacío para no cambiarla.</small>
+              </label>
+              <div class="field">
+                <span>Alta</span>
+                <div class="note"><%= user.createdAt || '-' %></div>
+              </div>
+            </div>
+            <div class="inline-actions mt-8">
+              <button class="secondary-button" type="submit">Guardar cambios</button>
+            </div>
+          </form>
+          <form method="post" action="/usuarios/<%= user.id %>/eliminar" class="inline-actions mb-16" onsubmit="return confirm('¿Eliminar este usuario?');">
+            <button class="danger-button" type="submit">Eliminar</button>
+          </form>
+          <% }) %>
+        </div>
       <% } %>
     </div>
   <% } %>

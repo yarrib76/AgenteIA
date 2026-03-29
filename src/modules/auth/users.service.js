@@ -9,6 +9,18 @@ function normalizeEmail(value) {
   return normalizeText(value).toLowerCase();
 }
 
+function normalizeUser(row) {
+  return {
+    id: normalizeText(row && row.id),
+    name: normalizeText(row && row.name),
+    email: normalizeEmail(row && row.email),
+    passwordHash: normalizeText(row && row.passwordHash),
+    createdAt: row && row.createdAt ? row.createdAt : new Date().toISOString(),
+    updatedAt: row && row.updatedAt ? row.updatedAt : new Date().toISOString(),
+    createdByUserId: normalizeText(row && row.createdByUserId) || null,
+  };
+}
+
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
 }
@@ -43,7 +55,7 @@ function verifyPassword(password, storedHash) {
 async function listUsers() {
   const { users } = getRepositories();
   const rows = await users.list();
-  return Array.isArray(rows) ? rows : [];
+  return (Array.isArray(rows) ? rows : []).map(normalizeUser);
 }
 
 async function getUserByEmail(email) {
@@ -53,8 +65,9 @@ async function getUserByEmail(email) {
 }
 
 async function getUserById(userId) {
+  const targetId = normalizeText(userId);
   const rows = await listUsers();
-  return rows.find((user) => user.id === userId) || null;
+  return rows.find((user) => user.id === targetId) || null;
 }
 
 async function hasAnyUsers() {
@@ -62,7 +75,8 @@ async function hasAnyUsers() {
   return rows.length > 0;
 }
 
-async function createUser({ email, password, createdByUserId = null }) {
+async function createUser({ name = "", email, password, createdByUserId = null }) {
+  const normalizedName = normalizeText(name);
   const normalizedEmail = normalizeEmail(email);
   if (!isValidEmail(normalizedEmail)) {
     throw new Error("Debes ingresar un email válido.");
@@ -76,18 +90,74 @@ async function createUser({ email, password, createdByUserId = null }) {
   }
 
   const nowIso = new Date().toISOString();
-  const user = {
+  const user = normalizeUser({
     id: randomUUID(),
+    name: normalizedName,
     email: normalizedEmail,
     passwordHash: hashPassword(password),
     createdAt: nowIso,
     updatedAt: nowIso,
     createdByUserId: createdByUserId || null,
-  };
+  });
 
   rows.push(user);
   await users.saveAll(rows);
   return user;
+}
+
+async function updateUser(userId, { name = "", email, password = "" }) {
+  const targetId = normalizeText(userId);
+  const normalizedName = normalizeText(name);
+  const normalizedEmail = normalizeEmail(email);
+  if (!targetId) throw new Error("Usuario inválido.");
+  if (!isValidEmail(normalizedEmail)) {
+    throw new Error("Debes ingresar un email válido.");
+  }
+
+  const { users } = getRepositories();
+  const rows = await listUsers();
+  const index = rows.findIndex((user) => user.id === targetId);
+  if (index < 0) {
+    throw new Error("Usuario no encontrado.");
+  }
+  if (rows.some((user) => user.id !== targetId && normalizeEmail(user.email) === normalizedEmail)) {
+    throw new Error("Ya existe un usuario con ese email.");
+  }
+
+  const next = {
+    ...rows[index],
+    name: normalizedName,
+    email: normalizedEmail,
+    updatedAt: new Date().toISOString(),
+  };
+  if (normalizeText(password)) {
+    validatePassword(password);
+    next.passwordHash = hashPassword(password);
+  }
+
+  rows[index] = normalizeUser(next);
+  await users.saveAll(rows);
+  return rows[index];
+}
+
+async function deleteUser(userId, { currentUserId = null } = {}) {
+  const targetId = normalizeText(userId);
+  const rows = await listUsers();
+  const target = rows.find((user) => user.id === targetId);
+  if (!target) {
+    throw new Error("Usuario no encontrado.");
+  }
+  if (currentUserId && targetId === normalizeText(currentUserId)) {
+    throw new Error("No puedes eliminar el usuario con el que estás autenticado.");
+  }
+  if (rows.length <= 1) {
+    throw new Error("No puedes eliminar el último usuario del sistema.");
+  }
+
+  const { users } = getRepositories();
+  const kept = rows.filter((user) => user.id !== targetId);
+  await users.saveAll(kept);
+  return true;
 }
 
 async function authenticateUser({ email, password }) {
@@ -100,8 +170,10 @@ async function authenticateUser({ email, password }) {
 module.exports = {
   authenticateUser,
   createUser,
+  deleteUser,
   getUserByEmail,
   getUserById,
   hasAnyUsers,
   listUsers,
+  updateUser,
 };

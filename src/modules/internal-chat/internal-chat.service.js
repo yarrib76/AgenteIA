@@ -402,6 +402,10 @@ async function resolveUserTarget(target) {
   if (byId) return byId;
   const byEmail = users.find((user) => String(user.email || "").trim().toLowerCase() === lookup.toLowerCase());
   if (byEmail) return byEmail;
+  const byName = users.find((user) => String(user.name || "").trim().toLowerCase() === lookup.toLowerCase());
+  if (byName) return byName;
+  const byPartialName = users.find((user) => String(user.name || "").toLowerCase().includes(lookup.toLowerCase()));
+  if (byPartialName) return byPartialName;
   const byPartial = users.find((user) => String(user.email || "").toLowerCase().includes(lookup.toLowerCase()));
   if (byPartial) return byPartial;
   throw new Error(`No se encontro usuario interno: ${lookup}`);

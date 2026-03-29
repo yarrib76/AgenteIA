@@ -8,6 +8,7 @@ function normalizeText(value) {
 function buildRegisterViewModel({
   currentUser = null,
   error = "",
+  name = "",
   email = "",
   next = "/",
   success = "",
@@ -17,6 +18,7 @@ function buildRegisterViewModel({
   return {
     currentUser,
     error,
+    name,
     email,
     next,
     success,
@@ -94,6 +96,7 @@ async function renderRegisterPage(req, res) {
     currentUser: req.currentUser,
     next: normalizeText(req.query.next) || "/",
     success: normalizeText(req.query.success),
+    error: normalizeText(req.query.error),
     challenge,
     users,
   });
@@ -101,6 +104,7 @@ async function renderRegisterPage(req, res) {
 }
 
 async function register(req, res) {
+  const name = normalizeText(req.body.name);
   const email = normalizeText(req.body.email);
   const password = String(req.body.password || "");
   const confirmPassword = String(req.body.confirmPassword || "");
@@ -115,6 +119,7 @@ async function register(req, res) {
     return renderRegister(res, req, buildRegisterViewModel({
       currentUser: req.currentUser,
       error: "Las contraseñas no coinciden.",
+      name,
       email,
       next,
       challenge,
@@ -127,6 +132,7 @@ async function register(req, res) {
     return renderRegister(res, req, buildRegisterViewModel({
       currentUser: req.currentUser,
       error: "Captcha inválido o vencido.",
+      name,
       email,
       next,
       challenge,
@@ -136,6 +142,7 @@ async function register(req, res) {
 
   try {
     const user = await usersService.createUser({
+      name,
       email,
       password,
       createdByUserId: req.currentUser ? req.currentUser.id : null,
@@ -152,6 +159,7 @@ async function register(req, res) {
     return renderRegister(res, req, buildRegisterViewModel({
       currentUser: req.currentUser,
       error: error.message,
+      name,
       email,
       next,
       challenge,
@@ -160,10 +168,36 @@ async function register(req, res) {
   }
 }
 
+async function updateUser(req, res) {
+  try {
+    await usersService.updateUser(req.params.userId, {
+      name: normalizeText(req.body.name),
+      email: normalizeText(req.body.email),
+      password: String(req.body.password || ""),
+    });
+    return res.redirect("/usuarios/nuevo?success=Usuario actualizado correctamente.");
+  } catch (error) {
+    return res.redirect(`/usuarios/nuevo?error=${encodeURIComponent(error.message)}`);
+  }
+}
+
+async function deleteUser(req, res) {
+  try {
+    await usersService.deleteUser(req.params.userId, {
+      currentUserId: req.currentUser ? req.currentUser.id : null,
+    });
+    return res.redirect("/usuarios/nuevo?success=Usuario eliminado correctamente.");
+  } catch (error) {
+    return res.redirect(`/usuarios/nuevo?error=${encodeURIComponent(error.message)}`);
+  }
+}
+
 module.exports = {
+  deleteUser,
   login,
   logout,
   register,
   renderLoginPage,
   renderRegisterPage,
+  updateUser,
 };

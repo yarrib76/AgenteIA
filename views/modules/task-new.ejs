@@ -108,7 +108,7 @@
           <option value="">Sin ruteo automatico</option>
           <% if (activeChannel === "internal_chat") { %>
             <% users.forEach(function(user) { %>
-            <option value="user:<%= user.id %>">[Usuario] <%= user.email %></option>
+            <option value="user:<%= user.id %>">[Usuario] <%= user.name ? (user.name + " (" + user.email + ")") : user.email %></option>
             <% }) %>
           <% } else { %>
             <% contacts.forEach(function(contact) { %>
@@ -247,7 +247,7 @@
         <% const responseTargetId = activeChannel === "internal_chat" ? (responseTargetRaw.includes(":") ? responseTargetRaw.split(":").slice(1).join(":") : responseTargetRaw) : ""; %>
         <% const responseUser = users.find(function(u) { return u.id === responseTargetId; }); %>
         <% const responseGroup = internalGroups.find(function(g) { return g.id === responseTargetId; }); %>
-        <td data-col="respuesta_a"><%= activeChannel === "internal_chat" ? (responseTargetRaw ? (responseTargetType === "group" ? (responseGroup ? ("[Grupo] " + responseGroup.name) : "Grupo no encontrado") : (responseUser ? ("[Usuario] " + responseUser.email) : "Usuario no encontrado")) : "Sin ruteo") : (responseContact ? (responseContact.name + " (" + (activeChannel === "telegram" ? (responseContact.type === "group" ? (responseContact.telegramGroupId || "-") : (responseContact.telegramUserId || "-")) : (responseContact.type === "group" ? (responseContact.groupId || responseContact.whatsappId || "-") : responseContact.phone)) + ")") : "Sin ruteo") %></td>
+        <td data-col="respuesta_a"><%= activeChannel === "internal_chat" ? (responseTargetRaw ? (responseTargetType === "group" ? (responseGroup ? ("[Grupo] " + responseGroup.name) : "Grupo no encontrado") : (responseUser ? ("[Usuario] " + (responseUser.name ? (responseUser.name + " (" + responseUser.email + ")") : responseUser.email)) : "Usuario no encontrado")) : "Sin ruteo") : (responseContact ? (responseContact.name + " (" + (activeChannel === "telegram" ? (responseContact.type === "group" ? (responseContact.telegramGroupId || "-") : (responseContact.telegramUserId || "-")) : (responseContact.type === "group" ? (responseContact.groupId || responseContact.whatsappId || "-") : responseContact.phone)) + ")") : "Sin ruteo") %></td>
         <% const taskAllowedGroups = contacts.filter(function(c) { return c.type === "group" && (task.allowedGroupContactIds || []).includes(c.id); }); %>
         <% const taskAllowedInternalGroups = internalGroups.filter(function(g) { return (task.allowedGroupContactIds || []).includes(g.id); }); %>
         <td data-col="grupos_permitidos" class="wrap-cell"><%= activeChannel === "internal_chat" ? (taskAllowedInternalGroups.length > 0 ? taskAllowedInternalGroups.map(function(g) { return g.name; }).join(", ") : "Sin grupos") : (taskAllowedGroups.length > 0 ? taskAllowedGroups.map(function(g) { return g.name; }).join(", ") : "Sin grupos") %></td>
