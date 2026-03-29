@@ -14,6 +14,16 @@ function buildConversationId(a, b) {
   return ids.join("__");
 }
 
+function normalizeClearedAtByUser(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return Object.entries(source).reduce((acc, [key, item]) => {
+    const nextKey = normalizeText(key);
+    const nextValue = normalizeText(item);
+    if (nextKey && nextValue) acc[nextKey] = nextValue;
+    return acc;
+  }, {});
+}
+
 function normalizeConversation(row) {
   return {
     id: normalizeText(row && row.id),
@@ -25,6 +35,7 @@ function normalizeConversation(row) {
     updatedAt: row && row.updatedAt || new Date().toISOString(),
     lastMessageAt: row && row.lastMessageAt || null,
     lastMessageText: normalizeText(row && row.lastMessageText),
+    clearedAtByUser: normalizeClearedAtByUser(row && row.clearedAtByUser),
   };
 }
 
@@ -42,6 +53,9 @@ function normalizeMessage(row) {
     createdAt: row && row.createdAt || new Date().toISOString(),
     timestamp: row && row.timestamp || row && row.createdAt || new Date().toISOString(),
     readAt: row && row.readAt || null,
+    deletedForUserIds: Array.isArray(row && row.deletedForUserIds)
+      ? row.deletedForUserIds.map((item) => normalizeText(item)).filter(Boolean)
+      : [],
   };
 }
 
@@ -67,6 +81,17 @@ async function saveMessages(rows) {
   await internalMessages.saveAll(rows);
 }
 
+function isMessageVisibleForUser(message, conversation, userId) {
+  const targetUserId = normalizeText(userId);
+  if (!targetUserId) return true;
+  if ((message.deletedForUserIds || []).includes(targetUserId)) return false;
+  const clearedAt = conversation && conversation.clearedAtByUser
+    ? conversation.clearedAtByUser[targetUserId]
+    : "";
+  if (!clearedAt) return true;
+  return new Date(message.timestamp).getTime() > new Date(clearedAt).getTime();
+}
+
 async function ensureConversation(userAId, userBId) {
   const conversationId = buildConversationId(userAId, userBId);
   const conversations = await listConversations();
@@ -80,6 +105,7 @@ async function ensureConversation(userAId, userBId) {
     updatedAt: now,
     lastMessageAt: null,
     lastMessageText: "",
+    clearedAtByUser: {},
   });
   conversations.push(conversation);
   await saveConversations(conversations);
@@ -105,30 +131,37 @@ async function sendMessage({ senderUserId, recipientUserId, text, status = "sent
     status,
     createdAt: now,
     timestamp: now,
+    deletedForUserIds: [],
   });
   messages.push(message);
   await saveMessages(messages);
 
   const conversations = await listConversations();
-  const updated = conversations.map((row) =>
-    row.id === conversation.id
-      ? {
-          ...row,
-          updatedAt: now,
-          lastMessageAt: now,
-          lastMessageText: nextText,
-        }
-      : row
-  );
+  const updated = conversations.map((row) => {
+    if (row.id !== conversation.id) return row;
+    const nextClearedAtByUser = { ...(row.clearedAtByUser || {}) };
+    if (nextClearedAtByUser[nextSender]) delete nextClearedAtByUser[nextSender];
+    if (nextClearedAtByUser[nextRecipient]) delete nextClearedAtByUser[nextRecipient];
+    return {
+      ...row,
+      updatedAt: now,
+      lastMessageAt: now,
+      lastMessageText: nextText,
+      clearedAtByUser: nextClearedAtByUser,
+    };
+  });
   await saveConversations(updated);
   return message;
 }
 
-async function listConversationMessages(conversationId) {
+async function listConversationMessages(conversationId, userId = "") {
   const target = normalizeText(conversationId);
-  const messages = await listMessages();
+  const targetUserId = normalizeText(userId);
+  const [messages, conversations] = await Promise.all([listMessages(), listConversations()]);
+  const conversation = conversations.find((row) => row.id === target) || null;
   return messages
     .filter((row) => row.conversationId === target)
+    .filter((row) => isMessageVisibleForUser(row, conversation, targetUserId))
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 }
 
@@ -144,8 +177,13 @@ async function listConversationsForUser(userId) {
     .map((row) => {
       const counterpartUserId = row.participantUserIds.find((item) => item !== target) || "";
       const counterpart = users.find((user) => user.id === counterpartUserId) || null;
-      const unreadCount = messages.filter(
-        (msg) => msg.conversationId === row.id && msg.recipientUserId === target && !msg.readAt
+      const visibleMessages = messages
+        .filter((msg) => msg.conversationId === row.id)
+        .filter((msg) => isMessageVisibleForUser(msg, row, target))
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const lastVisible = visibleMessages[visibleMessages.length - 1] || null;
+      const unreadCount = visibleMessages.filter(
+        (msg) => msg.recipientUserId === target && !msg.readAt
       ).length;
       return {
         ...row,
@@ -154,6 +192,8 @@ async function listConversationsForUser(userId) {
           counterpartUserId === SYSTEM_USER_ID
             ? SYSTEM_USER_LABEL
             : (counterpart ? counterpart.email : counterpartUserId),
+        lastMessageAt: lastVisible ? lastVisible.timestamp : null,
+        lastMessageText: lastVisible ? lastVisible.text : "",
         unreadCount,
       };
     })
@@ -163,11 +203,15 @@ async function listConversationsForUser(userId) {
 async function markConversationRead(conversationId, userId) {
   const targetConversation = normalizeText(conversationId);
   const targetUserId = normalizeText(userId);
-  const messages = await listMessages();
+  const [messages, conversations] = await Promise.all([listMessages(), listConversations()]);
+  const conversation = conversations.find((row) => row.id === targetConversation) || null;
   const now = new Date().toISOString();
   let changed = 0;
   const updated = messages.map((row) => {
     if (row.conversationId !== targetConversation || row.recipientUserId !== targetUserId || row.readAt) {
+      return row;
+    }
+    if (!isMessageVisibleForUser(row, conversation, targetUserId)) {
       return row;
     }
     changed += 1;
@@ -182,30 +226,57 @@ async function markConversationRead(conversationId, userId) {
   return changed;
 }
 
-async function clearConversation(conversationId, userId) {
+async function clearConversationForUser(conversationId, userId) {
   const targetConversation = normalizeText(conversationId);
   const currentUserId = normalizeText(userId);
-  const conversation = await getConversationForUsersByConversationId(targetConversation, currentUserId);
-  if (!conversation) return 0;
-  const messages = await listMessages();
-  const kept = messages.filter((row) => row.conversationId !== targetConversation);
-  const deleted = messages.length - kept.length;
-  if (deleted > 0) {
-    await saveMessages(kept);
-  }
   const conversations = await listConversations();
-  const nextConversations = conversations.map((row) =>
-    row.id === targetConversation
-      ? {
-          ...row,
-          lastMessageAt: null,
-          lastMessageText: "",
-          updatedAt: new Date().toISOString(),
-        }
-      : row
+  const index = conversations.findIndex(
+    (row) => row.id === targetConversation && row.participantUserIds.includes(currentUserId)
   );
-  await saveConversations(nextConversations);
+  if (index < 0) return 0;
+  const now = new Date().toISOString();
+  conversations[index] = {
+    ...conversations[index],
+    updatedAt: now,
+    clearedAtByUser: {
+      ...(conversations[index].clearedAtByUser || {}),
+      [currentUserId]: now,
+    },
+  };
+  await saveConversations(conversations);
+  return 1;
+}
+
+async function deleteMessageForUser(conversationId, messageId, userId) {
+  const targetConversation = normalizeText(conversationId);
+  const targetMessageId = normalizeText(messageId);
+  const currentUserId = normalizeText(userId);
+  const [conversations, messages] = await Promise.all([listConversations(), listMessages()]);
+  const conversation = conversations.find(
+    (row) => row.id === targetConversation && row.participantUserIds.includes(currentUserId)
+  );
+  if (!conversation) throw new Error("Conversacion no encontrada.");
+  let deleted = 0;
+  const updated = messages.map((row) => {
+    if (row.id !== targetMessageId || row.conversationId !== targetConversation) return row;
+    const deletedForUserIds = Array.isArray(row.deletedForUserIds) ? row.deletedForUserIds.slice() : [];
+    if (!deletedForUserIds.includes(currentUserId)) {
+      deletedForUserIds.push(currentUserId);
+      deleted += 1;
+    }
+    return {
+      ...row,
+      deletedForUserIds,
+    };
+  });
+  if (deleted > 0) {
+    await saveMessages(updated);
+  }
   return deleted;
+}
+
+async function clearConversation(conversationId, userId) {
+  return clearConversationForUser(conversationId, userId);
 }
 
 async function resolveUserTarget(target) {
@@ -245,6 +316,8 @@ module.exports = {
   listConversationsForUser,
   markConversationRead,
   clearConversation,
+  clearConversationForUser,
+  deleteMessageForUser,
   resolveUserTarget,
   getConversationForUsers,
   getConversationForUsersByConversationId,

@@ -1,8 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
   <style name="Theme.AgenteIAInternalChat" parent="Theme.Material3.Light.NoActionBar">
-    <item name="colorPrimary">#254D32</item>
-    <item name="colorSecondary">#6B8F71</item>
-    <item name="android:statusBarColor" tools:targetApi="l">#254D32</item>
+    <item name="colorPrimary">#0F6C5D</item>
+    <item name="colorSecondary">#12977D</item>
+    <item name="android:statusBarColor" tools:targetApi="l">#0F6C5D</item>
+    <item name="android:navigationBarColor" tools:targetApi="l">#F3EFE8</item>
+    <item name="android:windowBackground">#F3EFE8</item>
+  </style>
+
+  <style name="EmojiButton">
+    <item name="android:layout_width">44dp</item>
+    <item name="android:layout_height">44dp</item>
+    <item name="android:layout_marginEnd">8dp</item>
+    <item name="android:background">@drawable/bg_emoji_chip</item>
+    <item name="android:gravity">center</item>
+    <item name="android:textSize">22sp</item>
   </style>
 </resources>

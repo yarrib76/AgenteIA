@@ -2,26 +2,80 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
   android:layout_width="match_parent"
   android:layout_height="wrap_content"
-  android:orientation="vertical"
-  android:padding="12dp">
+  android:orientation="horizontal"
+  android:gravity="center_vertical"
+  android:paddingHorizontal="14dp"
+  android:paddingVertical="10dp"
+  android:background="#F8F5EE">
 
   <TextView
-    android:id="@+id/conversationTitle"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:id="@+id/conversationAvatar"
+    android:layout_width="46dp"
+    android:layout_height="46dp"
+    android:background="@drawable/bg_avatar_circle"
+    android:gravity="center"
+    android:text="A"
+    android:textColor="#FFFFFF"
+    android:textSize="18sp"
     android:textStyle="bold" />
 
-  <TextView
-    android:id="@+id/conversationSubtitle"
-    android:layout_width="match_parent"
+  <LinearLayout
+    android:layout_width="0dp"
     android:layout_height="wrap_content"
-    android:layout_marginTop="4dp" />
+    android:layout_weight="1"
+    android:layout_marginStart="12dp"
+    android:orientation="vertical">
 
-  <TextView
-    android:id="@+id/conversationUnread"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:layout_marginTop="4dp"
-    android:textColor="@android:color/holo_red_dark" />
+    <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:gravity="center_vertical">
+
+      <TextView
+        android:id="@+id/conversationTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="#14211D"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+      <TextView
+        android:id="@+id/conversationTime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#6E7C76"
+        android:textSize="12sp" />
+    </LinearLayout>
+
+    <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="4dp"
+      android:gravity="center_vertical">
+
+      <TextView
+        android:id="@+id/conversationSubtitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="#50615A"
+        android:textSize="14sp" />
+
+      <TextView
+        android:id="@+id/conversationUnread"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/bg_unread_badge"
+        android:gravity="center"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+    </LinearLayout>
+  </LinearLayout>
 
 </LinearLayout>

@@ -76,5 +76,16 @@ data class DeviceTokenRequest(
 
 data class GenericResponse(
     val ok: Boolean,
-    val message: String? = null
+    val message: String? = null,
+    val deletedCount: Int? = null
+)
+
+data class RealtimeMessageEvent(
+    val messageId: String,
+    val conversationId: String,
+    val senderUserId: String,
+    val recipientUserId: String,
+    val text: String,
+    val timestamp: String,
+    val readAt: String? = null
 )

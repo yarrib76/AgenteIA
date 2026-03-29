@@ -4,7 +4,7 @@
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:orientation="vertical"
-  android:padding="16dp">
+  android:background="#EFEAE2">
 
   <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
     android:id="@+id/chatRefresh"
@@ -16,6 +16,9 @@
       android:id="@+id/chatRecycler"
       android:layout_width="match_parent"
       android:layout_height="match_parent"
+      android:clipToPadding="false"
+      android:paddingTop="10dp"
+      android:paddingBottom="10dp"
       app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
   </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
@@ -23,21 +26,76 @@
     android:id="@+id/chatStatusText"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
+    android:paddingHorizontal="12dp"
+    android:paddingTop="4dp"
     android:textColor="@android:color/holo_red_dark" />
 
-  <EditText
-    android:id="@+id/chatInput"
+  <HorizontalScrollView
+    android:id="@+id/chatEmojiScroll"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
-    android:hint="@string/message_hint" />
+    android:background="#DDE7E3"
+    android:paddingHorizontal="10dp"
+    android:paddingVertical="8dp"
+    android:visibility="gone"
+    android:fillViewport="true"
+    android:scrollbars="none">
 
-  <Button
-    android:id="@+id/chatSendButton"
+    <LinearLayout
+      android:id="@+id/chatEmojiBar"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:orientation="horizontal">
+
+      <TextView android:id="@+id/emojiSmile" style="@style/EmojiButton">😀</TextView>
+      <TextView android:id="@+id/emojiLaugh" style="@style/EmojiButton">😂</TextView>
+      <TextView android:id="@+id/emojiHeart" style="@style/EmojiButton">❤️</TextView>
+      <TextView android:id="@+id/emojiThumbs" style="@style/EmojiButton">👍</TextView>
+      <TextView android:id="@+id/emojiRobot" style="@style/EmojiButton">🤖</TextView>
+      <TextView android:id="@+id/emojiFire" style="@style/EmojiButton">🔥</TextView>
+      <TextView android:id="@+id/emojiCheck" style="@style/EmojiButton">✅</TextView>
+      <TextView android:id="@+id/emojiParty" style="@style/EmojiButton">🎉</TextView>
+    </LinearLayout>
+  </HorizontalScrollView>
+
+  <LinearLayout
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
-    android:text="@string/send" />
+    android:background="#F6F1E8"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="10dp">
+
+    <ImageButton
+      android:id="@+id/chatEmojiButton"
+      android:layout_width="44dp"
+      android:layout_height="44dp"
+      android:background="@drawable/bg_icon_button"
+      android:contentDescription="emoji"
+      android:src="@drawable/ic_emoji" />
+
+    <EditText
+      android:id="@+id/chatInput"
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_weight="1"
+      android:layout_marginStart="8dp"
+      android:layout_marginEnd="8dp"
+      android:background="@drawable/bg_chat_input"
+      android:hint="@string/message_hint"
+      android:maxLines="5"
+      android:minHeight="44dp"
+      android:paddingHorizontal="14dp"
+      android:paddingVertical="10dp" />
+
+    <ImageButton
+      android:id="@+id/chatSendButton"
+      android:layout_width="46dp"
+      android:layout_height="46dp"
+      android:background="@drawable/bg_send_button"
+      android:contentDescription="send"
+      android:src="@drawable/ic_send" />
+  </LinearLayout>
 
 </LinearLayout>
+

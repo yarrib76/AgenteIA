@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="app_name">AgenteIA Chat</string>
+  <string name="app_name">Robot IA Chat</string>
   <string name="email">Email</string>
   <string name="password">Contraseña</string>
   <string name="login">Ingresar</string>
@@ -11,17 +11,29 @@
   <string name="load_conversations_failed">No se pudieron cargar las conversaciones.</string>
   <string name="load_messages_failed">No se pudieron cargar los mensajes.</string>
   <string name="send_message_failed">No se pudo enviar el mensaje.</string>
+  <string name="delete_message_failed">No se pudo borrar el mensaje.</string>
+  <string name="delete_chat_failed">No se pudo borrar el chat.</string>
   <string name="no_messages_yet">Sin mensajes todavía.</string>
   <string name="no_conversations">No hay conversaciones.</string>
   <string name="new_message">Tenés un mensaje nuevo.</string>
-  <string name="message_hint">Escribí un mensaje</string>
+  <string name="message_hint">Mensaje</string>
   <string name="send">Enviar</string>
   <string name="save">Guardar</string>
   <string name="close">Cerrar</string>
+  <string name="cancel">Cancelar</string>
+  <string name="delete">Borrar</string>
   <string name="chat_title">Chat</string>
-  <string name="server_settings">Configuración servidor</string>
+  <string name="server_settings">Servidor</string>
   <string name="server_settings_saved">Configuración guardada.</string>
   <string name="server_settings_help">Definí la URL base del backend. Ejemplo: http://192.168.0.25:3000/</string>
   <string name="server_url_hint">http://192.168.0.25:3000/</string>
   <string name="server_in_use">Servidor: %1$s</string>
+  <string name="message_received">Recibido</string>
+  <string name="you_label">Vos</string>
+  <string name="robot_label">Robot IA</string>
+  <string name="delete_message_title">Borrar mensaje</string>
+  <string name="delete_message_description">Este mensaje se borrará solo en tu vista.</string>
+  <string name="delete_chat_title">Borrar chat</string>
+  <string name="delete_chat_message">Se limpiará este chat solo para vos: %1$s</string>
+  <string name="conversations_header">Chats</string>
 </resources>

@@ -8,8 +8,17 @@ function buildInternalChatProvider() {
 
   function emitMessage(message) {
     if (!io) return;
-    io.to(`internal-user:${message.senderUserId}`).emit("internal-chat-message", message);
-    io.to(`internal-user:${message.recipientUserId}`).emit("internal-chat-message", message);
+    const payload = {
+      messageId: message.id,
+      conversationId: message.conversationId,
+      senderUserId: message.senderUserId,
+      recipientUserId: message.recipientUserId,
+      text: message.text,
+      timestamp: message.timestamp,
+      readAt: message.readAt || null,
+    };
+    io.to(`internal-user:${message.senderUserId}`).emit("internal-chat-message", payload);
+    io.to(`internal-user:${message.recipientUserId}`).emit("internal-chat-message", payload);
   }
 
   messagingGateway.setProvider("internal_chat", {
@@ -24,9 +33,12 @@ function buildInternalChatProvider() {
       });
       emitMessage(message);
       await internalChatPushService.sendPushToUser(recipient.id, {
-        title: "Nuevo mensaje interno",
+        title: senderUserId === internalChatService.SYSTEM_USER_ID ? "Robot IA" : "Nuevo mensaje interno",
         body: text,
         conversationId: message.conversationId,
+        counterpartEmail: senderUserId === internalChatService.SYSTEM_USER_ID
+          ? internalChatService.SYSTEM_USER_LABEL
+          : (await usersService.getUserById(senderUserId))?.email || internalChatService.SYSTEM_USER_LABEL,
       });
       return {
         chatId: message.conversationId,

@@ -23,3 +23,9 @@ archivos/*
 
 data/*
 !data/.gitkeep
+
+# Cache local de Gradle/Kotlin para builds Android
+.gradle-user-home/
+tools/android-home/
+tools/tmp-gradle/
+

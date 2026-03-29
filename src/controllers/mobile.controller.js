@@ -62,7 +62,7 @@ async function getConversationMessages(req, res) {
   if (!conversation) {
     return res.status(404).json({ ok: false, message: "Conversacion no encontrada." });
   }
-  const messages = await internalChatService.listConversationMessages(conversation.id);
+  const messages = await internalChatService.listConversationMessages(conversation.id, req.mobileUser.id);
   await internalChatService.markConversationRead(conversation.id, req.mobileUser.id);
   return res.json({
     ok: true,
@@ -92,9 +92,10 @@ async function sendConversationMessage(req, res) {
       status: "sent",
     });
     await internalChatPushService.sendPushToUser(recipientUserId, {
-      title: "Nuevo mensaje interno",
+      title: req.mobileUser.email || "Nuevo mensaje interno",
       body: text,
       conversationId: message.conversationId,
+      counterpartEmail: req.mobileUser.email || "",
     });
     return res.status(201).json({ ok: true, message });
   } catch (error) {
@@ -112,6 +113,42 @@ async function markConversationRead(req, res) {
   }
   const count = await internalChatService.markConversationRead(conversation.id, req.mobileUser.id);
   return res.json({ ok: true, updatedCount: count });
+}
+
+async function deleteConversation(req, res) {
+  try {
+    const conversation = await internalChatService.getConversationForUsersByConversationId(
+      req.params.conversationId,
+      req.mobileUser.id
+    );
+    if (!conversation) {
+      return res.status(404).json({ ok: false, message: "Conversacion no encontrada." });
+    }
+    await internalChatService.clearConversationForUser(conversation.id, req.mobileUser.id);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({ ok: false, message: error.message });
+  }
+}
+
+async function deleteConversationMessage(req, res) {
+  try {
+    const conversation = await internalChatService.getConversationForUsersByConversationId(
+      req.params.conversationId,
+      req.mobileUser.id
+    );
+    if (!conversation) {
+      return res.status(404).json({ ok: false, message: "Conversacion no encontrada." });
+    }
+    const deletedCount = await internalChatService.deleteMessageForUser(
+      conversation.id,
+      req.params.messageId,
+      req.mobileUser.id
+    );
+    return res.json({ ok: true, deletedCount });
+  } catch (error) {
+    return res.status(400).json({ ok: false, message: error.message });
+  }
 }
 
 async function registerDevice(req, res) {
@@ -145,6 +182,8 @@ module.exports = {
   getConversationMessages,
   sendConversationMessage,
   markConversationRead,
+  deleteConversation,
+  deleteConversationMessage,
   registerDevice,
   deleteDevice,
 };

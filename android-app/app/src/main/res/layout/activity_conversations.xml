@@ -4,51 +4,65 @@
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:orientation="vertical"
-  android:padding="16dp">
-
-  <TextView
-    android:id="@+id/conversationsUserText"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
-
-  <TextView
-    android:id="@+id/conversationsBackendInfoText"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginTop="4dp" />
+  android:background="#F3EFE8">
 
   <LinearLayout
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
-    android:orientation="horizontal">
+    android:background="#0F6C5D"
+    android:orientation="vertical"
+    android:padding="16dp">
 
-    <Button
-      android:id="@+id/conversationsSettingsButton"
-      android:layout_width="wrap_content"
+    <TextView
+      android:id="@+id/conversationsUserText"
+      android:layout_width="match_parent"
       android:layout_height="wrap_content"
-      android:text="@string/server_settings" />
+      android:text="@string/conversations_header"
+      android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
+      android:textColor="#FFFFFF"
+      android:textStyle="bold" />
 
-    <Button
-      android:id="@+id/conversationsLogoutButton"
-      android:layout_width="wrap_content"
+    <TextView
+      android:id="@+id/conversationsBackendInfoText"
+      android:layout_width="match_parent"
       android:layout_height="wrap_content"
-      android:layout_marginStart="8dp"
-      android:text="@string/logout" />
+      android:layout_marginTop="4dp"
+      android:textColor="#DCEFEA"
+      android:textSize="12sp" />
+
+    <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="10dp"
+      android:gravity="end"
+      android:orientation="horizontal">
+
+      <Button
+        android:id="@+id/conversationsSettingsButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/server_settings" />
+
+      <Button
+        android:id="@+id/conversationsLogoutButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:text="@string/logout" />
+    </LinearLayout>
   </LinearLayout>
 
   <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
     android:id="@+id/conversationsRefresh"
     android:layout_width="match_parent"
     android:layout_height="0dp"
-    android:layout_weight="1"
-    android:layout_marginTop="12dp">
+    android:layout_weight="1">
 
     <androidx.recyclerview.widget.RecyclerView
       android:id="@+id/conversationsRecycler"
       android:layout_width="match_parent"
       android:layout_height="match_parent"
+      android:background="#F8F5EE"
       app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
   </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
@@ -56,6 +70,7 @@
     android:id="@+id/conversationsStatusText"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp" />
+    android:padding="12dp"
+    android:textColor="@android:color/holo_red_dark" />
 
 </LinearLayout>

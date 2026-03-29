@@ -27,7 +27,11 @@ router.get("/api/mobile/me", mobileController.getMe);
 router.get("/api/mobile/conversations", mobileController.listConversations);
 router.get("/api/mobile/conversations/:conversationId/messages", mobileController.getConversationMessages);
 router.post("/api/mobile/conversations/:conversationId/messages", mobileController.sendConversationMessage);
+router.delete("/api/mobile/conversations/:conversationId/messages/:messageId", mobileController.deleteConversationMessage);
+router.post("/api/mobile/conversations/:conversationId/messages/:messageId/delete", mobileController.deleteConversationMessage);
 router.post("/api/mobile/conversations/:conversationId/read", mobileController.markConversationRead);
+router.delete("/api/mobile/conversations/:conversationId", mobileController.deleteConversation);
+router.post("/api/mobile/conversations/:conversationId/delete", mobileController.deleteConversation);
 router.post("/api/mobile/devices", mobileController.registerDevice);
 router.delete("/api/mobile/devices/:token", mobileController.deleteDevice);
 

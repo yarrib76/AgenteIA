@@ -74,7 +74,7 @@ async function getAccessToken() {
   return cachedAccessToken.token;
 }
 
-async function sendPushToUser(userId, { title, body, conversationId }) {
+async function sendPushToUser(userId, { title, body, conversationId, counterpartEmail = "" }) {
   if (!isConfigured()) {
     return { sent: false, reason: "fcm_not_configured" };
   }
@@ -105,6 +105,9 @@ async function sendPushToUser(userId, { title, body, conversationId }) {
               data: {
                 conversationId: normalizeText(conversationId),
                 channel: "internal_chat",
+                counterpartEmail: normalizeText(counterpartEmail),
+                title: normalizeText(title || "Nuevo mensaje"),
+                body: normalizeText(body || ""),
               },
               android: {
                 priority: "high",

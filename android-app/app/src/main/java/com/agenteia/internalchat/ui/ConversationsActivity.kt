@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -14,6 +15,7 @@ import com.agenteia.internalchat.data.DeviceTokenRequest
 import com.agenteia.internalchat.data.ServerSettingsStore
 import com.agenteia.internalchat.data.SessionStore
 import com.agenteia.internalchat.network.ApiClient
+import com.agenteia.internalchat.network.InternalChatSocketClient
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +29,7 @@ class ConversationsActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var backendInfoText: TextView
+    private lateinit var socketClient: InternalChatSocketClient
 
     private val settingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -41,6 +44,7 @@ class ConversationsActivity : AppCompatActivity() {
 
         sessionStore = SessionStore(this)
         settingsStore = ServerSettingsStore(this)
+        socketClient = InternalChatSocketClient(this)
         if (!sessionStore.isLoggedIn()) {
             logoutToLogin()
             return
@@ -56,12 +60,15 @@ class ConversationsActivity : AppCompatActivity() {
 
         titleText.text = sessionStore.getUserEmail()
         renderBackendInfo()
-        adapter = ConversationsAdapter { conversation ->
-            val intent = Intent(this, ChatActivity::class.java)
-                .putExtra("conversationId", conversation.id)
-                .putExtra("conversationName", conversation.counterpartEmail)
-            startActivity(intent)
-        }
+        adapter = ConversationsAdapter(
+            onTap = { conversation ->
+                val intent = Intent(this, ChatActivity::class.java)
+                    .putExtra("conversationId", conversation.id)
+                    .putExtra("conversationName", conversation.counterpartEmail)
+                startActivity(intent)
+            },
+            onLongTap = { conversation -> confirmDeleteConversation(conversation.id, conversation.counterpartEmail) }
+        )
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = adapter
         swipeRefresh.setOnRefreshListener { loadConversations() }
@@ -77,7 +84,21 @@ class ConversationsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        connectSocket()
         loadConversations()
+    }
+
+    override fun onPause() {
+        socketClient.disconnect()
+        super.onPause()
+    }
+
+    private fun connectSocket() {
+        socketClient.connect(sessionStore.getUserId()) {
+            runOnUiThread {
+                loadConversations(silent = true)
+            }
+        }
     }
 
     private fun renderBackendInfo() {
@@ -86,8 +107,8 @@ class ConversationsActivity : AppCompatActivity() {
 
     private fun authorization(): String = "Bearer ${sessionStore.getToken()}"
 
-    private fun loadConversations() {
-        swipeRefresh.isRefreshing = true
+    private fun loadConversations(silent: Boolean = false) {
+        if (!silent) swipeRefresh.isRefreshing = true
         CoroutineScope(Dispatchers.IO).launch {
             val response = runCatching {
                 ApiClient.api(this@ConversationsActivity).listConversations(authorization())
@@ -105,8 +126,33 @@ class ConversationsActivity : AppCompatActivity() {
                     return@withContext
                 }
                 adapter.submit(body.conversations)
-                statusText.text =
-                    if (body.conversations.isEmpty()) getString(R.string.no_conversations) else ""
+                statusText.text = if (body.conversations.isEmpty()) getString(R.string.no_conversations) else ""
+            }
+        }
+    }
+
+    private fun confirmDeleteConversation(conversationId: String, counterpart: String) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.delete_chat_title)
+            .setMessage(getString(R.string.delete_chat_message, counterpart))
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.delete) { _, _ ->
+                deleteConversation(conversationId)
+            }
+            .show()
+    }
+
+    private fun deleteConversation(conversationId: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val response = runCatching {
+                ApiClient.api(this@ConversationsActivity).deleteConversationPost(authorization(), conversationId)
+            }.getOrNull()
+            withContext(Dispatchers.Main) {
+                if (response == null || !response.isSuccessful || response.body()?.ok != true) {
+                    statusText.text = response?.body()?.message ?: getString(R.string.delete_chat_failed)
+                    return@withContext
+                }
+                loadConversations(silent = true)
             }
         }
     }
@@ -119,7 +165,7 @@ class ConversationsActivity : AppCompatActivity() {
                     DeviceTokenRequest(
                         token = token,
                         deviceName = android.os.Build.MODEL ?: "Android",
-                        appVersion = "1.0.0"
+                        appVersion = "1.1.0"
                     )
                 )
             }
@@ -141,3 +187,4 @@ class ConversationsActivity : AppCompatActivity() {
         finish()
     }
 }
+

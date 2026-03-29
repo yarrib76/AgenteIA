@@ -1,9 +1,13 @@
 package com.agenteia.internalchat.network
 
 import android.content.Context
+import com.agenteia.internalchat.data.RealtimeMessageEvent
 import com.agenteia.internalchat.data.ServerSettingsStore
+import io.socket.client.IO
+import io.socket.client.Socket
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import org.json.JSONObject
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
@@ -31,5 +35,43 @@ object ApiClient {
     fun api(context: Context): ApiService {
         val baseUrl = ServerSettingsStore(context.applicationContext).getBackendBaseUrl()
         return build(baseUrl)
+    }
+}
+
+class InternalChatSocketClient(private val context: Context) {
+    private var socket: Socket? = null
+
+    fun connect(userId: String, onMessage: (RealtimeMessageEvent) -> Unit) {
+        disconnect()
+        val baseUrl = ServerSettingsStore(context.applicationContext).getBackendBaseUrl().removeSuffix("/")
+        val options = IO.Options.builder()
+            .setForceNew(true)
+            .setReconnection(true)
+            .build()
+        socket = IO.socket(baseUrl, options)
+        socket?.on(Socket.EVENT_CONNECT) {
+            val payload = JSONObject().put("userId", userId)
+            socket?.emit("internal-chat-auth", payload)
+        }
+        socket?.on("internal-chat-message") { args ->
+            val raw = args.firstOrNull() as? JSONObject ?: return@on
+            val event = RealtimeMessageEvent(
+                messageId = raw.optString("messageId"),
+                conversationId = raw.optString("conversationId"),
+                senderUserId = raw.optString("senderUserId"),
+                recipientUserId = raw.optString("recipientUserId"),
+                text = raw.optString("text"),
+                timestamp = raw.optString("timestamp"),
+                readAt = raw.optString("readAt").ifBlank { null },
+            )
+            onMessage(event)
+        }
+        socket?.connect()
+    }
+
+    fun disconnect() {
+        socket?.off()
+        socket?.disconnect()
+        socket = null
     }
 }

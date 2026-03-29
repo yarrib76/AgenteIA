@@ -43,6 +43,32 @@ interface ApiService {
         @Body request: SendMessageRequest
     ): Response<SendMessageResponse>
 
+    @DELETE("api/mobile/conversations/{conversationId}/messages/{messageId}")
+    suspend fun deleteMessage(
+        @Header("Authorization") authorization: String,
+        @Path("conversationId") conversationId: String,
+        @Path("messageId") messageId: String
+    ): Response<GenericResponse>
+
+    @POST("api/mobile/conversations/{conversationId}/messages/{messageId}/delete")
+    suspend fun deleteMessagePost(
+        @Header("Authorization") authorization: String,
+        @Path("conversationId") conversationId: String,
+        @Path("messageId") messageId: String
+    ): Response<GenericResponse>
+
+    @DELETE("api/mobile/conversations/{conversationId}")
+    suspend fun deleteConversation(
+        @Header("Authorization") authorization: String,
+        @Path("conversationId") conversationId: String
+    ): Response<GenericResponse>
+
+    @POST("api/mobile/conversations/{conversationId}/delete")
+    suspend fun deleteConversationPost(
+        @Header("Authorization") authorization: String,
+        @Path("conversationId") conversationId: String
+    ): Response<GenericResponse>
+
     @POST("api/mobile/conversations/{conversationId}/read")
     suspend fun markConversationRead(
         @Header("Authorization") authorization: String,

@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 class LoginActivity : AppCompatActivity() {
     private lateinit var sessionStore: SessionStore
@@ -83,6 +84,14 @@ class LoginActivity : AppCompatActivity() {
         requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
+    private fun extractBackendError(rawBody: String): String {
+        if (rawBody.isBlank()) return getString(R.string.login_failed)
+        return runCatching {
+            val json = JSONObject(rawBody)
+            json.optString("message").ifBlank { rawBody }
+        }.getOrElse { rawBody }
+    }
+
     private fun doLogin() {
         val email = emailInput.text.toString().trim()
         val password = passwordInput.text.toString()
@@ -95,7 +104,7 @@ class LoginActivity : AppCompatActivity() {
         statusText.text = getString(R.string.logging_in)
 
         CoroutineScope(Dispatchers.IO).launch {
-            val response = runCatching {
+            val result = runCatching {
                 ApiClient.api(this@LoginActivity).login(
                     LoginRequest(
                         email = email,
@@ -103,14 +112,28 @@ class LoginActivity : AppCompatActivity() {
                         deviceName = Build.MODEL ?: "Android"
                     )
                 )
-            }.getOrNull()
+            }
 
             withContext(Dispatchers.Main) {
                 loginButton.isEnabled = true
-                if (response == null || !response.isSuccessful) {
+                if (result.isFailure) {
+                    val detail = result.exceptionOrNull()?.message ?: getString(R.string.login_failed)
+                    statusText.text = "Error de red: $detail"
+                    return@withContext
+                }
+
+                val response = result.getOrNull()
+                if (response == null) {
                     statusText.text = getString(R.string.login_failed)
                     return@withContext
                 }
+
+                if (!response.isSuccessful) {
+                    val errorBody = runCatching { response.errorBody()?.string().orEmpty() }.getOrDefault("")
+                    statusText.text = extractBackendError(errorBody)
+                    return@withContext
+                }
+
                 val body = response.body()
                 if (body?.ok != true || body.token.isNullOrBlank() || body.user == null) {
                     statusText.text = body?.message ?: getString(R.string.login_failed)
