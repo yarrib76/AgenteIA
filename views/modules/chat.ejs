@@ -39,7 +39,12 @@
     <% } else { %>
     <% messages.forEach(function(msg) { %>
     <div class="message <%= msg.direction === 'out' ? 'out' : 'in' %>">
-      <div class="bubble"><%= msg.text %></div>
+      <div class="bubble">
+        <% if (activeChannel === 'internal_chat' && msg.direction !== 'out' && msg.conversationType === 'group' && msg.senderName) { %>
+        <div class="meta"><strong><%= msg.senderName %></strong></div>
+        <% } %>
+        <%= msg.text %>
+      </div>
       <span class="meta"><%= msg.timestampFormatted || msg.timestamp %></span>
     </div>
     <% }) %>

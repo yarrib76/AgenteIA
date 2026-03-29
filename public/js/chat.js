@@ -16,7 +16,7 @@
 
   function renderMessages(messages) {
     const fingerprint = JSON.stringify(
-      (messages || []).map((m) => [m.id, m.timestamp, m.text, m.direction])
+      (messages || []).map((m) => [m.id, m.timestamp, m.text, m.direction, m.senderName, m.conversationType])
     );
     if (fingerprint === lastRenderedFingerprint) {
       return;
@@ -31,8 +31,15 @@
       .map((msg) => {
         const cls = msg.direction === "out" ? "out" : "in";
         const timestamp = formatTimestamp(msg.timestamp);
+        const showSender = activeChannelInput && activeChannelInput.value === "internal_chat"
+          && msg.direction !== "out"
+          && msg.conversationType === "group"
+          && String(msg.senderName || "").trim();
+        const senderHtml = showSender
+          ? `<div class="meta"><strong>${escapeHtml(msg.senderName)}</strong></div>`
+          : "";
         return `<div class="message ${cls}">
-          <div class="bubble">${escapeHtml(msg.text)}</div>
+          <div class="bubble">${senderHtml}${escapeHtml(msg.text)}</div>
           <span class="meta">${escapeHtml(timestamp)}</span>
         </div>`;
       })

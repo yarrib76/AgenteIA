@@ -79,6 +79,8 @@ async function renderChatPage(req, res) {
       ...msg,
       direction: msg.senderUserId === req.currentUser.id ? "out" : "in",
       timestampFormatted: formatDateTime(msg.timestamp),
+      conversationType: msg.conversationType || (selectedContact && selectedContact.type === "group" ? "group" : "direct"),
+      senderName: msg.senderName || "",
     }));
 
     return res.render("layouts/main", {
@@ -161,6 +163,8 @@ async function getConversation(req, res) {
         messages: messages.map((msg) => ({
           ...msg,
           direction: msg.senderUserId === req.currentUser.id ? "out" : "in",
+          conversationType: msg.conversationType || "group",
+          senderName: msg.senderName || "",
         })),
         activeChannel,
         configured: true,
@@ -185,6 +189,8 @@ async function getConversation(req, res) {
       messages: messages.map((msg) => ({
         ...msg,
         direction: msg.senderUserId === req.currentUser.id ? "out" : "in",
+        conversationType: msg.conversationType || "direct",
+        senderName: msg.senderName || "",
       })),
       activeChannel,
       configured: true,
