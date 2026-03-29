@@ -451,26 +451,34 @@ async function resolveInternalTargetFromAction(action, fallbackTargetId = "") {
   return null;
 }
 
-function buildInternalTargetsReferenceText(users, groups) {
-  const userRows = Array.isArray(users) ? users : [];
-  const groupRows = Array.isArray(groups) ? groups : [];
-  const compactUsers = userRows.slice(0, 200).map((u) => ({
-    contactId: "user:" + u.id,
-    type: "user",
-    email: u.email,
-  }));
-  const compactGroups = groupRows.slice(0, 200).map((g) => ({
+function buildInternalTargetsReferenceText(users, groups, responseContactId = "") {
+  const compactGroups = (Array.isArray(groups) ? groups : []).slice(0, 200).map((g) => ({
     contactId: "group:" + g.id,
     type: "group",
     name: g.name,
     membersCount: g.membersCount || 0,
   }));
-  const compact = compactUsers.concat(compactGroups);
-  if (compact.length === 0) return "";
-  return [
-    "Destinos internos disponibles (usar contactId cuando corresponda):",
-    JSON.stringify(compact),
-  ].join("\n");
+  const sections = [];
+  const normalizedResponseId = normalizeInternalTargetId(responseContactId);
+  if (normalizedResponseId.startsWith("user:")) {
+    const responseUserId = normalizedResponseId.slice(5);
+    const responseUser = (Array.isArray(users) ? users : []).find((u) => u.id === responseUserId);
+    if (responseUser) {
+      sections.push(
+        "Usuario destino de respuesta (no usar para elegir grupo de envio):\n" + JSON.stringify({
+          contactId: "user:" + responseUser.id,
+          type: "user",
+          email: responseUser.email,
+        })
+      );
+    }
+  }
+  if (compactGroups.length > 0) {
+    sections.push(
+      "Grupos internos permitidos para send_message (usar contactId):\n" + JSON.stringify(compactGroups)
+    );
+  }
+  return sections.join("\n\n");
 }
 
 function buildIntegrationsReferenceText(integrations) {
@@ -615,9 +623,7 @@ async function createTask({
   const nextIntegrationId = normalizeText(integrationId);
   const nextResponseContactId = normalizeText(responseContactId);
   const nextReplyRoutingMode = normalizeReplyRoutingMode(replyRoutingMode, nextResponseContactId);
-  const nextAllowedGroupContactIds = activeChannel === "internal_chat"
-    ? []
-    : normalizeIdList(allowedGroupContactIds);
+  const nextAllowedGroupContactIds = normalizeIdList(allowedGroupContactIds);
   const schedule = buildSchedulePayload({
     scheduleEnabled,
     scheduleDays,
@@ -650,8 +656,8 @@ async function createTask({
     }
     if (activeChannel === "internal_chat") {
       const target = await resolveInternalTaskTarget(nextResponseContactId);
-      if (!target) {
-        throw new Error("Destino de respuesta invalido. Debe ser un usuario o grupo interno.");
+      if (!target || target.type !== "user") {
+        throw new Error("Destino de respuesta invalido. Debe ser un usuario interno.");
       }
     } else {
       const targetContact = await contactsService.getContactById(nextResponseContactId);
@@ -660,12 +666,22 @@ async function createTask({
       }
     }
   }
-  if (activeChannel !== "internal_chat" && nextAllowedGroupContactIds.length > 0) {
-    const allContacts = await contactsService.listContacts();
-    for (const contactId of nextAllowedGroupContactIds) {
-      const group = allContacts.find((c) => c.id === contactId);
-      if (!group || String(group.type || "contact") !== "group") {
-        throw new Error("La lista de grupos permitidos contiene un grupo invalido.");
+  if (nextAllowedGroupContactIds.length > 0) {
+    if (activeChannel === "internal_chat") {
+      const internalGroups = await internalChatGroupsService.listGroups();
+      for (const groupId of nextAllowedGroupContactIds) {
+        const group = internalGroups.find((item) => item.id === groupId);
+        if (!group) {
+          throw new Error("La lista de grupos permitidos contiene un grupo interno invalido.");
+        }
+      }
+    } else {
+      const allContacts = await contactsService.listContacts();
+      for (const contactId of nextAllowedGroupContactIds) {
+        const group = allContacts.find((c) => c.id === contactId);
+        if (!group || String(group.type || "contact") !== "group") {
+          throw new Error("La lista de grupos permitidos contiene un grupo invalido.");
+        }
       }
     }
   }
@@ -746,9 +762,7 @@ async function updateTask(
   const nextIntegrationId = normalizeText(integrationId);
   const nextResponseContactId = normalizeText(responseContactId);
   const nextReplyRoutingMode = normalizeReplyRoutingMode(replyRoutingMode, nextResponseContactId);
-  const nextAllowedGroupContactIds = activeChannel === "internal_chat"
-    ? []
-    : normalizeIdList(allowedGroupContactIds);
+  const nextAllowedGroupContactIds = normalizeIdList(allowedGroupContactIds);
   const schedule = buildSchedulePayload({
     scheduleEnabled,
     scheduleDays,
@@ -782,8 +796,8 @@ async function updateTask(
     }
     if (activeChannel === "internal_chat") {
       const target = await resolveInternalTaskTarget(nextResponseContactId);
-      if (!target) {
-        throw new Error("Destino de respuesta invalido. Debe ser un usuario o grupo interno.");
+      if (!target || target.type !== "user") {
+        throw new Error("Destino de respuesta invalido. Debe ser un usuario interno.");
       }
     } else {
       const targetContact = await contactsService.getContactById(nextResponseContactId);
@@ -792,12 +806,22 @@ async function updateTask(
       }
     }
   }
-  if (activeChannel !== "internal_chat" && nextAllowedGroupContactIds.length > 0) {
-    const allContacts = await contactsService.listContacts();
-    for (const contactId of nextAllowedGroupContactIds) {
-      const group = allContacts.find((c) => c.id === contactId);
-      if (!group || String(group.type || "contact") !== "group") {
-        throw new Error("La lista de grupos permitidos contiene un grupo invalido.");
+  if (nextAllowedGroupContactIds.length > 0) {
+    if (activeChannel === "internal_chat") {
+      const internalGroups = await internalChatGroupsService.listGroups();
+      for (const groupId of nextAllowedGroupContactIds) {
+        const group = internalGroups.find((item) => item.id === groupId);
+        if (!group) {
+          throw new Error("La lista de grupos permitidos contiene un grupo interno invalido.");
+        }
+      }
+    } else {
+      const allContacts = await contactsService.listContacts();
+      for (const contactId of nextAllowedGroupContactIds) {
+        const group = allContacts.find((c) => c.id === contactId);
+        if (!group || String(group.type || "contact") !== "group") {
+          throw new Error("La lista de grupos permitidos contiene un grupo invalido.");
+        }
       }
     }
   }
@@ -1550,9 +1574,57 @@ async function applyGlobalGuardrails({
 }) {
   const activeChannel = await messagingGateway.getChannel();
   if (activeChannel === "internal_chat") {
+    const warnings = [];
+    const allowedInternalGroupIds = new Set(normalizeIdList(task && task.allowedGroupContactIds));
+    const sourceActions = Array.isArray(parsed && parsed.actions) ? parsed.actions : [];
+    const keptActions = [];
+    for (let i = 0; i < sourceActions.length; i += 1) {
+      const action = sourceActions[i] || {};
+      const type = normalizeText(action.type).toLowerCase();
+      if (normalizeActionType(type) !== "send_message") {
+        keptActions.push(action);
+        continue;
+      }
+      const resolvedTarget = await resolveInternalTargetFromAction(action, "");
+      if (!resolvedTarget) {
+        if (allowedInternalGroupIds.size === 1) {
+          keptActions.push(action);
+          continue;
+        }
+        warnings.push({
+          code: "internal_target_missing_skipped",
+          actionIndex: i,
+        });
+        continue;
+      }
+      if (resolvedTarget.type !== "group") {
+        warnings.push({
+          code: "internal_user_target_not_allowed_skipped",
+          actionIndex: i,
+          contactId: resolvedTarget.storageId,
+        });
+        continue;
+      }
+      if (!allowedInternalGroupIds.has(resolvedTarget.id)) {
+        warnings.push({
+          code: "internal_group_not_allowed_skipped",
+          actionIndex: i,
+          contactId: resolvedTarget.storageId,
+        });
+        continue;
+      }
+      keptActions.push({
+        ...action,
+        contactId: resolvedTarget.storageId,
+        contact: normalizeText(action.contact) || resolvedTarget.name,
+      });
+    }
     return {
-      parsed,
-      warnings: [],
+      parsed: {
+        ...(parsed || {}),
+        actions: keptActions,
+      },
+      warnings,
     };
   }
   const warnings = [];
@@ -1646,10 +1718,10 @@ async function executeSendMessageAction(task, action, context, resolvedContact) 
   let contact = resolvedContact || null;
   let contactTarget = "";
   if (activeChannel === "internal_chat") {
-    const resolvedTarget = await resolveInternalTargetFromAction(
-      action,
-      task && task.responseContactId ? task.responseContactId : ""
-    );
+    const fallbackGroupId = Array.isArray(task && task.allowedGroupContactIds) && task.allowedGroupContactIds.length === 1
+      ? "group:" + String(task.allowedGroupContactIds[0] || "").trim()
+      : "";
+    const resolvedTarget = await resolveInternalTargetFromAction(action, fallbackGroupId);
     if (!resolvedTarget) {
       throw new Error("No se pudo resolver el destino interno.");
     }
@@ -1900,7 +1972,7 @@ async function executeTask(taskId, options = {}) {
       availableIntegrations = [configuredIntegration];
     }
     const contactsReferenceText = activeChannel === "internal_chat"
-      ? buildInternalTargetsReferenceText(availableUsers, availableInternalGroups)
+      ? buildInternalTargetsReferenceText(availableUsers, availableInternalGroups, task.responseContactId)
       : buildContactsReferenceText(availableContacts);
     const integrationsReferenceText = buildIntegrationsReferenceText(availableIntegrations);
     task = appendLog(task, "execution_route", "ok", "Ruta de ejecucion resuelta", {
