@@ -3,6 +3,7 @@ const messagesService = require("../modules/chat/messages.service");
 const messagingGateway = require("../modules/messaging/messaging.gateway");
 const usersService = require("../modules/auth/users.service");
 const internalChatService = require("../modules/internal-chat/internal-chat.service");
+const internalChatGroupsService = require("../modules/internal-chat/internal-chat-groups.service");
 
 function formatDateTime(value, timeZone = "America/Argentina/Buenos_Aires") {
   if (!value) return "-";
@@ -20,24 +21,59 @@ function formatDateTime(value, timeZone = "America/Argentina/Buenos_Aires") {
   }).format(date);
 }
 
+function parseInternalTargetId(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("group:")) {
+    return { type: "group", id: raw.slice(6) };
+  }
+  if (raw.startsWith("user:")) {
+    return { type: "user", id: raw.slice(5) };
+  }
+  return { type: "user", id: raw };
+}
+
+async function buildInternalTargets(currentUserId) {
+  const [users, groups] = await Promise.all([
+    usersService.listUsers(),
+    internalChatGroupsService.listGroups(),
+  ]);
+  const directTargets = (users || [])
+    .filter((user) => !currentUserId || user.id !== currentUserId)
+    .map((user) => ({
+      id: `user:${user.id}`,
+      rawId: user.id,
+      name: user.email,
+      type: "user",
+      targetLabel: user.email,
+    }));
+  const groupTargets = (groups || [])
+    .filter((group) => !currentUserId || (group.memberUserIds || []).includes(currentUserId))
+    .map((group) => ({
+      id: `group:${group.id}`,
+      rawId: group.id,
+      name: group.name,
+      type: "group",
+      targetLabel: group.name,
+    }));
+  return [...directTargets, ...groupTargets].sort((a, b) => a.name.localeCompare(b.name, "es"));
+}
+
 async function renderChatPage(req, res) {
   const activeChannel = await messagingGateway.getChannel();
   if (activeChannel === "internal_chat") {
-    const users = (await usersService.listUsers())
-      .filter((user) => !req.currentUser || user.id !== req.currentUser.id)
-      .map((user) => ({
-        id: user.id,
-        name: user.email,
-        type: "user",
-        targetLabel: user.email,
-      }));
-    const selectedContactId = req.query.contactId || (users[0] && users[0].id);
-    const selectedUser = users.find((user) => user.id === selectedContactId) || null;
-    const conversation = selectedUser && req.currentUser
-      ? await internalChatService.getConversationForUsers(req.currentUser.id, selectedUser.id)
-      : null;
+    const contacts = await buildInternalTargets(req.currentUser && req.currentUser.id);
+    const selectedContactId = req.query.contactId || (contacts[0] && contacts[0].id);
+    const selectedContact = contacts.find((contact) => contact.id === selectedContactId) || null;
+    const parsed = parseInternalTargetId(selectedContactId);
+    let conversation = null;
+    if (selectedContact && req.currentUser && parsed) {
+      conversation = parsed.type === "group"
+        ? await internalChatService.getConversationForGroup(parsed.id)
+        : await internalChatService.getConversationForUsers(req.currentUser.id, parsed.id);
+    }
     const messages = conversation
-      ? await internalChatService.listConversationMessages(conversation.id)
+      ? await internalChatService.listConversationMessages(conversation.id, req.currentUser.id)
       : [];
     const messagesWithFormattedTime = (messages || []).map((msg) => ({
       ...msg,
@@ -51,12 +87,12 @@ async function renderChatPage(req, res) {
       headerTitle: "Chat",
       moduleView: "chat",
       moduleData: {
-        contacts: users,
-        selectedContactId: selectedUser ? selectedUser.id : "",
+        contacts,
+        selectedContactId: selectedContact ? selectedContact.id : "",
         messages: messagesWithFormattedTime,
         channelReady: true,
         activeChannel,
-        selectedContactConfigured: Boolean(selectedUser),
+        selectedContactConfigured: Boolean(selectedContact),
       },
       pageScripts: ["/js/chat.js"],
     });
@@ -103,13 +139,41 @@ async function getConversation(req, res) {
     if (!req.currentUser) {
       return res.status(401).json({ ok: false, message: "Sesion invalida." });
     }
-    const user = await usersService.getUserById(req.params.contactId);
+    const parsed = parseInternalTargetId(req.params.contactId);
+    if (!parsed) {
+      return res.status(404).json({ ok: false, message: "Destino no encontrado." });
+    }
+
+    if (parsed.type === "group") {
+      const group = await internalChatGroupsService.getGroupById(parsed.id);
+      if (!group || !(group.memberUserIds || []).includes(req.currentUser.id)) {
+        return res.status(404).json({ ok: false, message: "Grupo no encontrado." });
+      }
+      const conversation = await internalChatService.getConversationForGroup(group.id);
+      const conversationId = conversation ? conversation.id : internalChatService.buildGroupConversationId(group.id);
+      const messages = conversation
+        ? await internalChatService.listConversationMessages(conversation.id, req.currentUser.id)
+        : [];
+      await internalChatService.markConversationRead(conversationId, req.currentUser.id);
+      return res.json({
+        ok: true,
+        contact: { id: `group:${group.id}`, name: group.name, type: "group" },
+        messages: messages.map((msg) => ({
+          ...msg,
+          direction: msg.senderUserId === req.currentUser.id ? "out" : "in",
+        })),
+        activeChannel,
+        configured: true,
+      });
+    }
+
+    const user = await usersService.getUserById(parsed.id);
     if (!user || user.id === req.currentUser.id) {
       return res.status(404).json({ ok: false, message: "Usuario no encontrado." });
     }
     const conversation = await internalChatService.getConversationForUsers(req.currentUser.id, user.id);
     const messages = conversation
-      ? await internalChatService.listConversationMessages(conversation.id)
+      ? await internalChatService.listConversationMessages(conversation.id, req.currentUser.id)
       : [];
     await internalChatService.markConversationRead(
       conversation ? conversation.id : internalChatService.buildConversationId(req.currentUser.id, user.id),
@@ -117,7 +181,7 @@ async function getConversation(req, res) {
     );
     return res.json({
       ok: true,
-      contact: { id: user.id, name: user.email, type: "user" },
+      contact: { id: `user:${user.id}`, name: user.email, type: "user" },
       messages: messages.map((msg) => ({
         ...msg,
         direction: msg.senderUserId === req.currentUser.id ? "out" : "in",
@@ -154,13 +218,37 @@ async function sendMessage(req, res) {
       if (!req.currentUser) {
         return res.status(401).json({ ok: false, message: "Sesion invalida." });
       }
-      const recipient = await usersService.getUserById(req.body.contactId);
-      if (!recipient || recipient.id === req.currentUser.id) {
-        return res.status(404).json({ ok: false, message: "Usuario no encontrado." });
+      const parsed = parseInternalTargetId(req.body.contactId);
+      if (!parsed) {
+        return res.status(404).json({ ok: false, message: "Destino no encontrado." });
       }
       const text = String(req.body.message || "").trim();
       if (!text) {
         return res.status(400).json({ ok: false, message: "Escribe un mensaje." });
+      }
+      if (parsed.type === "group") {
+        const group = await internalChatGroupsService.getGroupById(parsed.id);
+        if (!group || !(group.memberUserIds || []).includes(req.currentUser.id)) {
+          return res.status(404).json({ ok: false, message: "Grupo no encontrado." });
+        }
+        const result = await messagingGateway.sendMessage(`group:${group.id}`, text, {
+          channel: "internal_chat",
+          senderUserId: req.currentUser.id,
+        });
+        return res.status(201).json({
+          ok: true,
+          message: {
+            id: result.messageId,
+            direction: "out",
+            text,
+            timestamp: new Date().toISOString(),
+          },
+          activeChannel,
+        });
+      }
+      const recipient = await usersService.getUserById(parsed.id);
+      if (!recipient || recipient.id === req.currentUser.id) {
+        return res.status(404).json({ ok: false, message: "Usuario no encontrado." });
       }
       const result = await messagingGateway.sendMessage(recipient.id, text, {
         channel: "internal_chat",
@@ -215,11 +303,24 @@ async function clearConversation(req, res) {
       if (!req.currentUser) {
         return res.status(401).json({ ok: false, message: "Sesion invalida." });
       }
-      const user = await usersService.getUserById(req.params.contactId || req.body.contactId);
-      if (!user || user.id === req.currentUser.id) {
-        return res.status(404).json({ ok: false, message: "Usuario no encontrado." });
+      const parsed = parseInternalTargetId(req.params.contactId || req.body.contactId);
+      if (!parsed) {
+        return res.status(404).json({ ok: false, message: "Destino no encontrado." });
       }
-      const conversationId = internalChatService.buildConversationId(req.currentUser.id, user.id);
+      let conversationId = "";
+      if (parsed.type === "group") {
+        const group = await internalChatGroupsService.getGroupById(parsed.id);
+        if (!group || !(group.memberUserIds || []).includes(req.currentUser.id)) {
+          return res.status(404).json({ ok: false, message: "Grupo no encontrado." });
+        }
+        conversationId = internalChatService.buildGroupConversationId(group.id);
+      } else {
+        const user = await usersService.getUserById(parsed.id);
+        if (!user || user.id === req.currentUser.id) {
+          return res.status(404).json({ ok: false, message: "Usuario no encontrado." });
+        }
+        conversationId = internalChatService.buildConversationId(req.currentUser.id, user.id);
+      }
       const deletedCount = await internalChatService.clearConversation(conversationId, req.currentUser.id);
       return res.json({ ok: true, deletedCount, activeChannel });
     }

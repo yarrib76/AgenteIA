@@ -55,7 +55,7 @@ async function listConversations(req, res) {
 }
 
 async function getConversationMessages(req, res) {
-  const conversation = await internalChatService.getConversationForUsersByConversationId(
+  const conversation = await internalChatService.getConversationByIdForUser(
     req.params.conversationId,
     req.mobileUser.id
   );
@@ -73,30 +73,50 @@ async function getConversationMessages(req, res) {
 
 async function sendConversationMessage(req, res) {
   try {
-    const conversation = await internalChatService.getConversationForUsersByConversationId(
+    const conversation = await internalChatService.getConversationByIdForUser(
       req.params.conversationId,
       req.mobileUser.id
     );
     if (!conversation) {
       return res.status(404).json({ ok: false, message: "Conversacion no encontrada." });
     }
-    const recipientUserId = conversation.participantUserIds.find((id) => id !== req.mobileUser.id);
     const text = String(req.body.text || "").trim();
     if (!text) {
       return res.status(400).json({ ok: false, message: "Escribe un mensaje." });
     }
-    const message = await internalChatService.sendMessage({
-      senderUserId: req.mobileUser.id,
-      recipientUserId,
-      text,
-      status: "sent",
-    });
-    await internalChatPushService.sendPushToUser(recipientUserId, {
-      title: req.mobileUser.email || "Nuevo mensaje interno",
-      body: text,
-      conversationId: message.conversationId,
-      counterpartEmail: req.mobileUser.email || "",
-    });
+
+    let message = null;
+    let pushTargets = [];
+    let counterpartEmail = req.mobileUser.email || "";
+
+    if (conversation.type === "group") {
+      message = await internalChatService.sendMessage({
+        senderUserId: req.mobileUser.id,
+        groupId: conversation.groupId,
+        text,
+        status: "sent",
+      });
+      pushTargets = (message.participantUserIds || []).filter((id) => id !== req.mobileUser.id);
+      counterpartEmail = conversation.name || counterpartEmail;
+    } else {
+      const recipientUserId = conversation.participantUserIds.find((id) => id !== req.mobileUser.id);
+      message = await internalChatService.sendMessage({
+        senderUserId: req.mobileUser.id,
+        recipientUserId,
+        text,
+        status: "sent",
+      });
+      pushTargets = [recipientUserId];
+    }
+
+    for (const userId of pushTargets) {
+      await internalChatPushService.sendPushToUser(userId, {
+        title: req.mobileUser.email || "Nuevo mensaje interno",
+        body: text,
+        conversationId: message.conversationId,
+        counterpartEmail,
+      });
+    }
     return res.status(201).json({ ok: true, message });
   } catch (error) {
     return res.status(400).json({ ok: false, message: error.message });
@@ -104,7 +124,7 @@ async function sendConversationMessage(req, res) {
 }
 
 async function markConversationRead(req, res) {
-  const conversation = await internalChatService.getConversationForUsersByConversationId(
+  const conversation = await internalChatService.getConversationByIdForUser(
     req.params.conversationId,
     req.mobileUser.id
   );
@@ -117,7 +137,7 @@ async function markConversationRead(req, res) {
 
 async function deleteConversation(req, res) {
   try {
-    const conversation = await internalChatService.getConversationForUsersByConversationId(
+    const conversation = await internalChatService.getConversationByIdForUser(
       req.params.conversationId,
       req.mobileUser.id
     );
@@ -133,7 +153,7 @@ async function deleteConversation(req, res) {
 
 async function deleteConversationMessage(req, res) {
   try {
-    const conversation = await internalChatService.getConversationForUsersByConversationId(
+    const conversation = await internalChatService.getConversationByIdForUser(
       req.params.conversationId,
       req.mobileUser.id
     );

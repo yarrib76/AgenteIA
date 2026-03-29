@@ -5,13 +5,13 @@
 
   <div class="chat-toolbar">
     <label class="field">
-      <span><%= activeChannel === "internal_chat" ? "Usuario" : "Contacto" %></span>
+      <span><%= activeChannel === "internal_chat" ? "Destino interno" : "Contacto" %></span>
       <select id="contactSelect">
         <option value="">Seleccionar...</option>
         <% contacts.forEach(function(contact) { %>
         <option value="<%= contact.id %>" <%= selectedContactId === contact.id ? "selected" : "" %>>
           <% if (activeChannel === "internal_chat") { %>
-            <%= contact.name %>
+            <%= contact.name %> [<%= contact.type === "group" ? "Grupo" : "Usuario" %>]
           <% } else { %>
             <%= contact.name %> [<%= contact.type === "group" ? "Grupo" : "Usuario" %>] (<%= activeChannel === "telegram" ? (contact.type === "group" ? (contact.telegramGroupId || "-") : (contact.telegramUserId || "-")) : (contact.type === "group" ? (contact.groupId || contact.whatsappId || "-") : contact.phone) %>)
           <% } %>

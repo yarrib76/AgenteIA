@@ -12,45 +12,71 @@ function buildInternalChatProvider() {
     const payload = {
       messageId: message.id,
       conversationId: message.conversationId,
+      conversationType: message.conversationType || "direct",
+      groupId: message.groupId || "",
       senderUserId: message.senderUserId,
       recipientUserId: message.recipientUserId,
       text: message.text,
       timestamp: message.timestamp,
       readAt: message.readAt || null,
     };
-    io.to(`internal-user:${message.senderUserId}`).emit("internal-chat-message", payload);
-    io.to(`internal-user:${message.recipientUserId}`).emit("internal-chat-message", payload);
+    const recipients = Array.isArray(message.participantUserIds) && message.participantUserIds.length > 0
+      ? message.participantUserIds
+      : [message.senderUserId, message.recipientUserId].filter(Boolean);
+    Array.from(new Set(recipients)).forEach((userId) => {
+      io.to(`internal-user:${userId}`).emit("internal-chat-message", payload);
+    });
   }
 
   messagingGateway.setProvider("internal_chat", {
     sendMessage: async (target, text, options = {}) => {
-      const recipient = await internalChatService.resolveUserTarget(target);
       const senderUserId = String(options.senderUserId || internalChatService.SYSTEM_USER_ID).trim();
-      const message = await internalChatService.sendMessage({
-        senderUserId,
-        recipientUserId: recipient.id,
-        text,
-        status: "sent",
-      });
-      emitMessage(message);
-      await internalChatPushService.sendPushToUser(recipient.id, {
-        title: senderUserId === internalChatService.SYSTEM_USER_ID ? "Robot IA" : "Nuevo mensaje interno",
-        body: text,
-        conversationId: message.conversationId,
-        counterpartEmail: senderUserId === internalChatService.SYSTEM_USER_ID
+      const resolved = await internalChatService.resolveTarget(target);
+      let message = null;
+      let pushTargets = [];
+      let counterpartEmail = internalChatService.SYSTEM_USER_LABEL;
+
+      if (resolved.type === "group") {
+        message = await internalChatService.sendMessage({
+          senderUserId,
+          groupId: resolved.group.id,
+          text,
+          status: "sent",
+        });
+        pushTargets = (message.participantUserIds || []).filter((userId) => userId && userId !== senderUserId);
+        counterpartEmail = resolved.group.name;
+      } else {
+        message = await internalChatService.sendMessage({
+          senderUserId,
+          recipientUserId: resolved.user.id,
+          text,
+          status: "sent",
+        });
+        pushTargets = [resolved.user.id];
+        counterpartEmail = senderUserId === internalChatService.SYSTEM_USER_ID
           ? internalChatService.SYSTEM_USER_LABEL
-          : (await usersService.getUserById(senderUserId))?.email || internalChatService.SYSTEM_USER_LABEL,
-      });
+          : (await usersService.getUserById(senderUserId))?.email || internalChatService.SYSTEM_USER_LABEL;
+      }
+
+      emitMessage(message);
+      for (const userId of pushTargets) {
+        await internalChatPushService.sendPushToUser(userId, {
+          title: senderUserId === internalChatService.SYSTEM_USER_ID ? "Robot IA" : "Nuevo mensaje interno",
+          body: text,
+          conversationId: message.conversationId,
+          counterpartEmail,
+        });
+      }
       return {
         chatId: message.conversationId,
-        contactKey: recipient.id,
+        contactKey: resolved.type === "group" ? `group:${resolved.group.id}` : resolved.user.id,
         messageId: message.id,
       };
     },
     isReady: async () => true,
     resolveContactKeys: async (target) => {
-      const recipient = await internalChatService.resolveUserTarget(target);
-      return [recipient.id];
+      const resolved = await internalChatService.resolveTarget(target);
+      return [resolved.type === "group" ? `group:${resolved.group.id}` : resolved.user.id];
     },
     listGroups: async () => {
       const groups = await internalChatGroupsService.listGroups();
