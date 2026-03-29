@@ -45,9 +45,11 @@ data class MessageDto(
     val id: String,
     val conversationId: String,
     val senderUserId: String,
+    val senderName: String = "",
     val recipientUserId: String,
     val text: String,
     val timestamp: String,
+    val conversationType: String = "direct",
     val readAt: String? = null
 )
 
@@ -84,8 +86,10 @@ data class RealtimeMessageEvent(
     val messageId: String,
     val conversationId: String,
     val senderUserId: String,
+    val senderName: String = "",
     val recipientUserId: String,
     val text: String,
     val timestamp: String,
+    val conversationType: String = "direct",
     val readAt: String? = null
 )

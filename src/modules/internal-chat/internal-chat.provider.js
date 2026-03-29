@@ -15,6 +15,7 @@ function buildInternalChatProvider() {
       conversationType: message.conversationType || "direct",
       groupId: message.groupId || "",
       senderUserId: message.senderUserId,
+      senderName: message.senderName || "",
       recipientUserId: message.recipientUserId,
       text: message.text,
       timestamp: message.timestamp,

@@ -69,6 +69,7 @@ function normalizeMessage(row) {
     conversationType: normalizeText(row && row.conversationType) || (normalizeText(row && row.groupId) ? "group" : "direct"),
     groupId: normalizeText(row && row.groupId),
     senderUserId: normalizeText(row && row.senderUserId),
+    senderName: normalizeText(row && row.senderName),
     recipientUserId,
     text: normalizeText(row && row.text),
     direction: normalizeText(row && row.direction) || "out",
@@ -122,6 +123,14 @@ function isMessageUnreadForUser(message, userId) {
   if (!targetUserId) return false;
   if (message.senderUserId === targetUserId) return false;
   return !(message.readByUserIds || []).includes(targetUserId);
+}
+
+async function resolveSenderLabel(senderUserId) {
+  const targetId = normalizeText(senderUserId);
+  if (!targetId || targetId === SYSTEM_USER_ID) return SYSTEM_USER_LABEL;
+  const user = await usersService.getUserById(targetId);
+  if (!user) return targetId;
+  return normalizeText(user.name) || normalizeText(user.email) || targetId;
 }
 
 async function ensureDirectConversation(userAId, userBId) {
@@ -186,6 +195,7 @@ async function sendMessage({ senderUserId, recipientUserId, groupId, text, statu
   let conversation = null;
   let participantUserIds = [];
   let message = null;
+  const senderName = await resolveSenderLabel(nextSender);
 
   if (nextGroupId) {
     conversation = await ensureGroupConversation(nextGroupId);
@@ -199,6 +209,7 @@ async function sendMessage({ senderUserId, recipientUserId, groupId, text, statu
       conversationType: "group",
       groupId: nextGroupId,
       senderUserId: nextSender,
+      senderName,
       recipientUserId: "",
       text: nextText,
       status,
@@ -218,6 +229,7 @@ async function sendMessage({ senderUserId, recipientUserId, groupId, text, statu
       conversationId: conversation.id,
       conversationType: "direct",
       senderUserId: nextSender,
+      senderName,
       recipientUserId: nextRecipient,
       text: nextText,
       status,
@@ -261,12 +273,23 @@ async function sendMessage({ senderUserId, recipientUserId, groupId, text, statu
 async function listConversationMessages(conversationId, userId = "") {
   const target = normalizeText(conversationId);
   const targetUserId = normalizeText(userId);
-  const [messages, conversations] = await Promise.all([listMessages(), listConversations()]);
+  const [messages, conversations, users] = await Promise.all([listMessages(), listConversations(), usersService.listUsers()]);
   const conversation = conversations.find((row) => row.id === target) || null;
   return messages
     .filter((row) => row.conversationId === target)
     .filter((row) => isMessageVisibleForUser(row, conversation, targetUserId))
-    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+    .map((row) => {
+      if (normalizeText(row.senderName)) return row;
+      if (row.senderUserId === SYSTEM_USER_ID) {
+        return { ...row, senderName: SYSTEM_USER_LABEL };
+      }
+      const sender = users.find((user) => user.id === row.senderUserId);
+      return {
+        ...row,
+        senderName: sender ? (normalizeText(sender.name) || normalizeText(sender.email) || row.senderUserId) : row.senderUserId,
+      };
+    });
 }
 
 async function listConversationsForUser(userId) {

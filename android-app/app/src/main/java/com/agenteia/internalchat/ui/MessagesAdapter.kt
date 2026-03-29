@@ -55,8 +55,13 @@ class MessagesAdapter(
             (row.layoutParams as RecyclerView.LayoutParams).width = RecyclerView.LayoutParams.MATCH_PARENT
             row.gravity = if (isOutgoing) Gravity.END else Gravity.START
             bubble.setBackgroundResource(if (isOutgoing) R.drawable.bg_message_out else R.drawable.bg_message_in)
-            sender.visibility = if (isOutgoing) View.GONE else View.VISIBLE
-            sender.text = if (item.senderUserId == "__system__") itemView.context.getString(R.string.robot_label) else itemView.context.getString(R.string.message_received)
+            val showSender = !isOutgoing && item.conversationType == "group"
+            sender.visibility = if (showSender) View.VISIBLE else View.GONE
+            sender.text = when {
+                item.senderUserId == "__system__" -> itemView.context.getString(R.string.robot_label)
+                item.senderName.isNotBlank() -> item.senderName
+                else -> itemView.context.getString(R.string.message_received)
+            }
             messageText.text = item.text
             val time = runCatching { timeFormatter.format(Instant.parse(item.timestamp)) }.getOrDefault("")
             messageMeta.text = if (isOutgoing) "$time  •  ${itemView.context.getString(R.string.you_label)}" else time

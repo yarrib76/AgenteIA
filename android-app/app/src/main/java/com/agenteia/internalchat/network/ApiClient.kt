@@ -59,9 +59,11 @@ class InternalChatSocketClient(private val context: Context) {
                 messageId = raw.optString("messageId"),
                 conversationId = raw.optString("conversationId"),
                 senderUserId = raw.optString("senderUserId"),
+                senderName = raw.optString("senderName"),
                 recipientUserId = raw.optString("recipientUserId"),
                 text = raw.optString("text"),
                 timestamp = raw.optString("timestamp"),
+                conversationType = raw.optString("conversationType").ifBlank { "direct" },
                 readAt = raw.optString("readAt").ifBlank { null },
             )
             onMessage(event)
