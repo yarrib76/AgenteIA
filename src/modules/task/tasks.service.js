@@ -1777,27 +1777,49 @@ async function executeSendMessageAction(task, action, context, resolvedContact) 
   }
 
   let replyRoute = null;
-  if (activeChannel !== "internal_chat" && task && task.replyRoutingMode === "contact") {
+  if (task && task.replyRoutingMode === "contact") {
     if (!task.responseContactId) {
       throw new Error("La tarea tiene ruteo a contacto pero no tiene responseContactId.");
     }
-    const destination = await contactsService.getContactById(task.responseContactId);
-    if (!destination) {
-      throw new Error("No se pudo resolver el contacto destino de respuesta.");
+    if (activeChannel === "internal_chat") {
+      const destination = await resolveInternalTaskTarget(task.responseContactId);
+      if (!destination || destination.type !== "user") {
+        throw new Error("No se pudo resolver el usuario destino de respuesta.");
+      }
+      if (String(contact && contact.type || "") !== "user") {
+        replyRoute = null;
+      } else {
+        replyRoute = await taskReplyRoutesService.upsertRouteForTask({
+          taskId: task.id,
+          channel: activeChannel,
+          sourcePhone: contactTarget,
+          destinationContactId: destination.storageId,
+          destinationPhone: destination.target,
+          routingEnabled: true,
+          originalMessage: finalMessage,
+          lastOutboundMessageId: String(sendResult && sendResult.messageId ? sendResult.messageId : ""),
+          lastOutboundAt: new Date().toISOString(),
+        });
+      }
+    } else {
+      const destination = await contactsService.getContactById(task.responseContactId);
+      if (!destination) {
+        throw new Error("No se pudo resolver el contacto destino de respuesta.");
+      }
+      const destinationTarget = contactsService.getContactMessageTarget(destination, activeChannel);
+      replyRoute = await taskReplyRoutesService.upsertRouteForTask({
+        taskId: task.id,
+        channel: activeChannel,
+        sourcePhone: contactTarget,
+        destinationContactId: destination.id,
+        destinationPhone: destinationTarget,
+        routingEnabled: true,
+        originalMessage: finalMessage,
+        lastOutboundMessageId: String(sendResult && sendResult.messageId ? sendResult.messageId : ""),
+        lastOutboundAt: new Date().toISOString(),
+      });
     }
-    const destinationTarget = contactsService.getContactMessageTarget(destination, activeChannel);
-    replyRoute = await taskReplyRoutesService.upsertRouteForTask({
-      taskId: task.id,
-      channel: activeChannel,
-      sourcePhone: contactTarget,
-      destinationContactId: destination.id,
-      destinationPhone: destinationTarget,
-      routingEnabled: true,
-      originalMessage: finalMessage,
-      lastOutboundMessageId: String(sendResult && sendResult.messageId ? sendResult.messageId : ""),
-      lastOutboundAt: new Date().toISOString(),
-    });
-  } else if (activeChannel !== "internal_chat" && task && task.replyRoutingMode === "none") {
+  } else if (task && task.replyRoutingMode === "none") {
     await taskReplyRoutesService.upsertRouteForTask({
       taskId: task.id,
       channel: activeChannel,

@@ -3,6 +3,7 @@ const mobileAuthService = require("../modules/mobile/mobile-auth.service");
 const mobileDeviceTokensService = require("../modules/mobile/mobile-device-tokens.service");
 const internalChatService = require("../modules/internal-chat/internal-chat.service");
 const internalChatPushService = require("../modules/internal-chat/internal-chat.push.service");
+const { routeTaskReplyIfNeeded } = require("../modules/messaging/reply-routing.service");
 
 function sanitizeUser(user) {
   return user
@@ -117,6 +118,17 @@ async function sendConversationMessage(req, res) {
         counterpartEmail,
       });
     }
+
+    await routeTaskReplyIfNeeded({
+      channel: "internal_chat",
+      sourceTarget: req.mobileUser.id,
+      text,
+      quotedMessageId: "",
+      isGroup: conversation.type === "group",
+      groupName: conversation.type === "group" ? (conversation.name || "") : "",
+      authorName: req.mobileUser.name || req.mobileUser.email || req.mobileUser.id,
+      authorTarget: req.mobileUser.id,
+    });
     return res.status(201).json({ ok: true, message });
   } catch (error) {
     return res.status(400).json({ ok: false, message: error.message });
