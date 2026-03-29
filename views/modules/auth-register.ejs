@@ -1,4 +1,4 @@
-<% const view = typeof authData !== 'undefined' ? authData : { currentUser, error, email, next, success, challenge }; %>
+<% const view = typeof authData !== 'undefined' ? authData : { currentUser, error, email, next, success, challenge, users }; %>
 <div class="auth-card">
   <div>
     <p class="auth-eyebrow"><%= view.currentUser ? 'Usuarios' : 'Onboarding' %></p>
@@ -35,6 +35,34 @@
     </label>
     <button class="primary-button auth-submit" type="submit">Crear usuario</button>
   </form>
+
+  <% if (view.currentUser) { %>
+    <div class="card module-card mt-16">
+      <div class="card-header">
+        <h3>Usuarios existentes</h3>
+      </div>
+      <% if (!view.users || view.users.length === 0) { %>
+        <p class="note">No hay usuarios creados.</p>
+      <% } else { %>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Alta</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% view.users.forEach(function(user) { %>
+            <tr>
+              <td><%= user.email %></td>
+              <td><%= user.createdAt || '-' %></td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  <% } %>
 
   <div class="auth-footer-links">
     <% if (view.currentUser) { %>

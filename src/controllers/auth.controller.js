@@ -12,6 +12,7 @@ function buildRegisterViewModel({
   next = "/",
   success = "",
   challenge,
+  users = [],
 }) {
   return {
     currentUser,
@@ -20,6 +21,7 @@ function buildRegisterViewModel({
     next,
     success,
     challenge,
+    users,
   };
 }
 
@@ -87,11 +89,13 @@ async function logout(req, res) {
 async function renderRegisterPage(req, res) {
   const challenge = authService.buildCaptchaChallenge();
   authService.setCaptcha(res, challenge);
+  const users = req.currentUser ? await usersService.listUsers() : [];
   const viewModel = buildRegisterViewModel({
     currentUser: req.currentUser,
     next: normalizeText(req.query.next) || "/",
     success: normalizeText(req.query.success),
     challenge,
+    users,
   });
   return renderRegister(res, req, viewModel);
 }
@@ -105,26 +109,29 @@ async function register(req, res) {
 
   const challenge = authService.buildCaptchaChallenge();
   authService.setCaptcha(res, challenge);
+  const users = req.currentUser ? await usersService.listUsers() : [];
 
   if (password !== confirmPassword) {
     return renderRegister(res, req, buildRegisterViewModel({
-        currentUser: req.currentUser,
-        error: "Las contraseñas no coinciden.",
-        email,
-        next,
-        challenge,
-      }), 400);
+      currentUser: req.currentUser,
+      error: "Las contraseñas no coinciden.",
+      email,
+      next,
+      challenge,
+      users,
+    }), 400);
   }
 
   if (!authService.consumeCaptcha(req, res, captchaAnswer)) {
     authService.setCaptcha(res, challenge);
     return renderRegister(res, req, buildRegisterViewModel({
-        currentUser: req.currentUser,
-        error: "Captcha inválido o vencido.",
-        email,
-        next,
-        challenge,
-      }), 400);
+      currentUser: req.currentUser,
+      error: "Captcha inválido o vencido.",
+      email,
+      next,
+      challenge,
+      users,
+    }), 400);
   }
 
   try {
@@ -143,12 +150,13 @@ async function register(req, res) {
   } catch (error) {
     authService.setCaptcha(res, challenge);
     return renderRegister(res, req, buildRegisterViewModel({
-        currentUser: req.currentUser,
-        error: error.message,
-        email,
-        next,
-        challenge,
-      }), 400);
+      currentUser: req.currentUser,
+      error: error.message,
+      email,
+      next,
+      challenge,
+      users,
+    }), 400);
   }
 }
 
