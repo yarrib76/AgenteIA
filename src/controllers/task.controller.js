@@ -7,6 +7,7 @@ const contactsService = require("../modules/agenda/contacts.service");
 const integrationsService = require("../modules/integration/api-integrations.service");
 const messagingGateway = require("../modules/messaging/messaging.gateway");
 const usersService = require("../modules/auth/users.service");
+const internalChatGroupsService = require("../modules/internal-chat/internal-chat-groups.service");
 
 function formatDateTime(value, timeZone) {
   if (!value) return "-";
@@ -28,7 +29,7 @@ function formatDateTime(value, timeZone) {
 }
 
 async function renderNewTaskPage(req, res) {
-  const [agents, roles, models, rawTasks, files, contacts, integrations, users] = await Promise.all([
+  const [agents, roles, models, rawTasks, files, contacts, integrations, users, internalGroups] = await Promise.all([
     agentsService.listAgents(),
     rolesService.listRoles(),
     modelsService.listModels(),
@@ -37,6 +38,7 @@ async function renderNewTaskPage(req, res) {
     contactsService.listContacts(),
     integrationsService.listIntegrations(),
     usersService.listUsers(),
+    internalChatGroupsService.listGroups(),
   ]);
   const activeChannel = await messagingGateway.getChannel();
   const tasks = rawTasks.map((task) => ({
@@ -60,6 +62,11 @@ async function renderNewTaskPage(req, res) {
       users: (users || []).map((user) => ({
         id: user.id,
         email: user.email,
+      })),
+      internalGroups: (internalGroups || []).map((group) => ({
+        id: group.id,
+        name: group.name,
+        membersCount: group.membersCount || 0,
       })),
       activeChannel,
     },

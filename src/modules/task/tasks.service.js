@@ -3,6 +3,7 @@ const { getRepositories } = require("../../repositories/repository-provider");
 const agentsService = require("../agent/agents.service");
 const rolesService = require("../agent/roles.service");
 const usersService = require("../auth/users.service");
+const internalChatGroupsService = require("../internal-chat/internal-chat-groups.service");
 const filesService = require("../file/files.service");
 const modelsService = require("../model/models.service");
 const modelTestService = require("../model/model-test.service");
@@ -354,6 +355,124 @@ function buildUsersReferenceText(users) {
   ].join("\n");
 }
 
+function normalizeInternalTargetId(value) {
+  const raw = normalizeText(value);
+  if (!raw) return "";
+  if (raw.includes(":")) return raw;
+  return "user:" + raw;
+}
+
+async function resolveInternalTaskTarget(value) {
+  const normalized = normalizeInternalTargetId(value);
+  if (!normalized) return null;
+  const [kind, rawId] = normalized.split(":");
+  const entityId = normalizeText(rawId);
+  if (!entityId) return null;
+  if (kind === "group") {
+    const group = await internalChatGroupsService.getGroupById(entityId);
+    if (!group) return null;
+    return {
+      type: "group",
+      id: group.id,
+      storageId: "group:" + group.id,
+      target: "group:" + group.id,
+      name: group.name,
+      label: "[Grupo] " + group.name,
+    };
+  }
+  const user = await usersService.getUserById(entityId);
+  if (!user) return null;
+  return {
+    type: "user",
+    id: user.id,
+    storageId: "user:" + user.id,
+    target: user.id,
+    name: user.email,
+    label: "[Usuario] " + user.email,
+  };
+}
+
+async function resolveInternalTargetFromAction(action, fallbackTargetId = "") {
+  const explicitGroupId = normalizeText(action && (action.groupId || action.group));
+  if (explicitGroupId) {
+    return resolveInternalTaskTarget("group:" + explicitGroupId);
+  }
+
+  const explicitContactId = normalizeText(action && action.contactId);
+  if (explicitContactId) {
+    const byPrefixed = await resolveInternalTaskTarget(explicitContactId);
+    if (byPrefixed) return byPrefixed;
+    const byLegacyUser = await resolveInternalTaskTarget("user:" + explicitContactId);
+    if (byLegacyUser) return byLegacyUser;
+    const byLegacyGroup = await resolveInternalTaskTarget("group:" + explicitContactId);
+    if (byLegacyGroup) return byLegacyGroup;
+  }
+
+  const explicitUserId = normalizeText(action && action.userId);
+  if (explicitUserId) {
+    const byUserId = await resolveInternalTaskTarget("user:" + explicitUserId);
+    if (byUserId) return byUserId;
+  }
+
+  const contactLookup = normalizeText(action && (action.contact || action.user));
+  if (contactLookup) {
+    const byEmail = usersService.getUserByEmail
+      ? await usersService.getUserByEmail(contactLookup)
+      : null;
+    if (byEmail) {
+      return {
+        type: "user",
+        id: byEmail.id,
+        storageId: "user:" + byEmail.id,
+        target: byEmail.id,
+        name: byEmail.email,
+        label: "[Usuario] " + byEmail.email,
+      };
+    }
+    const groups = await internalChatGroupsService.listGroups();
+    const normalizedLookup = contactLookup.toLowerCase();
+    const group = groups.find((item) => String(item.name || "").trim().toLowerCase() === normalizedLookup)
+      || groups.find((item) => String(item.name || "").toLowerCase().includes(normalizedLookup));
+    if (group) {
+      return {
+        type: "group",
+        id: group.id,
+        storageId: "group:" + group.id,
+        target: "group:" + group.id,
+        name: group.name,
+        label: "[Grupo] " + group.name,
+      };
+    }
+  }
+
+  if (fallbackTargetId) {
+    return resolveInternalTaskTarget(fallbackTargetId);
+  }
+  return null;
+}
+
+function buildInternalTargetsReferenceText(users, groups) {
+  const userRows = Array.isArray(users) ? users : [];
+  const groupRows = Array.isArray(groups) ? groups : [];
+  const compactUsers = userRows.slice(0, 200).map((u) => ({
+    contactId: "user:" + u.id,
+    type: "user",
+    email: u.email,
+  }));
+  const compactGroups = groupRows.slice(0, 200).map((g) => ({
+    contactId: "group:" + g.id,
+    type: "group",
+    name: g.name,
+    membersCount: g.membersCount || 0,
+  }));
+  const compact = compactUsers.concat(compactGroups);
+  if (compact.length === 0) return "";
+  return [
+    "Destinos internos disponibles (usar contactId cuando corresponda):",
+    JSON.stringify(compact),
+  ].join("\n");
+}
+
 function buildIntegrationsReferenceText(integrations) {
   const rows = Array.isArray(integrations) ? integrations : [];
   if (rows.length === 0) return "";
@@ -436,10 +555,14 @@ function requiresMessagingAction(task) {
 
 async function listTasks() {
   const { tasks: tasksRepo } = getRepositories();
+  const activeChannel = await messagingGateway.getChannel();
   const tasks = await tasksRepo.list();
   const normalized = tasks.map((task) => {
-    const responseContactId =
+    const responseContactIdRaw =
       normalizeText(task.responseContactId) || normalizeText(task.replyToContactId) || null;
+    const responseContactId = activeChannel === "internal_chat"
+      ? normalizeInternalTargetId(responseContactIdRaw)
+      : responseContactIdRaw;
     const replyRoutingMode = normalizeReplyRoutingMode(task.replyRoutingMode, responseContactId);
     const integrationId = normalizeText(task.integrationId) || null;
     const allowedGroupContactIds = normalizeIdList(task.allowedGroupContactIds);
@@ -521,14 +644,14 @@ async function createTask({
     if (!nextResponseContactId) {
       throw new Error(
         activeChannel === "internal_chat"
-          ? "Debes seleccionar un usuario destino de respuesta o usar Sin ruteo."
+          ? "Debes seleccionar un usuario o grupo destino de respuesta o usar Sin ruteo."
           : "Debes seleccionar un contacto destino de respuesta o usar Sin ruteo."
       );
     }
     if (activeChannel === "internal_chat") {
-      const targetUser = await usersService.getUserById(nextResponseContactId);
-      if (!targetUser) {
-        throw new Error("Usuario destino de respuesta invalido.");
+      const target = await resolveInternalTaskTarget(nextResponseContactId);
+      if (!target) {
+        throw new Error("Destino de respuesta invalido. Debe ser un usuario o grupo interno.");
       }
     } else {
       const targetContact = await contactsService.getContactById(nextResponseContactId);
@@ -567,7 +690,9 @@ async function createTask({
     taskInput: nextTaskInput,
     fileId: nextFileId || null,
     integrationId: nextIntegrationId || null,
-    responseContactId: nextReplyRoutingMode === "contact" ? nextResponseContactId : null,
+    responseContactId: nextReplyRoutingMode === "contact" && activeChannel === "internal_chat"
+      ? normalizeInternalTargetId(nextResponseContactId)
+      : nextReplyRoutingMode === "contact" ? nextResponseContactId : null,
     replyRoutingMode: nextReplyRoutingMode,
     allowedGroupContactIds: nextAllowedGroupContactIds,
     scheduleEnabled: schedule.scheduleEnabled,
@@ -651,14 +776,14 @@ async function updateTask(
     if (!nextResponseContactId) {
       throw new Error(
         activeChannel === "internal_chat"
-          ? "Debes seleccionar un usuario destino de respuesta o usar Sin ruteo."
+          ? "Debes seleccionar un usuario o grupo destino de respuesta o usar Sin ruteo."
           : "Debes seleccionar un contacto destino de respuesta o usar Sin ruteo."
       );
     }
     if (activeChannel === "internal_chat") {
-      const targetUser = await usersService.getUserById(nextResponseContactId);
-      if (!targetUser) {
-        throw new Error("Usuario destino de respuesta invalido.");
+      const target = await resolveInternalTaskTarget(nextResponseContactId);
+      if (!target) {
+        throw new Error("Destino de respuesta invalido. Debe ser un usuario o grupo interno.");
       }
     } else {
       const targetContact = await contactsService.getContactById(nextResponseContactId);
@@ -698,7 +823,9 @@ async function updateTask(
     taskInput: nextTaskInput,
     fileId: nextFileId || null,
     integrationId: nextIntegrationId || null,
-    responseContactId: nextReplyRoutingMode === "contact" ? nextResponseContactId : null,
+    responseContactId: nextReplyRoutingMode === "contact" && activeChannel === "internal_chat"
+      ? normalizeInternalTargetId(nextResponseContactId)
+      : nextReplyRoutingMode === "contact" ? nextResponseContactId : null,
     replyRoutingMode: nextReplyRoutingMode,
     allowedGroupContactIds: nextAllowedGroupContactIds,
     scheduleEnabled: schedule.scheduleEnabled,
@@ -1519,17 +1646,19 @@ async function executeSendMessageAction(task, action, context, resolvedContact) 
   let contact = resolvedContact || null;
   let contactTarget = "";
   if (activeChannel === "internal_chat") {
-    const internalUser = contact || (await usersService.getUserById(normalizeText(action && (action.userId || action.contactId))));
-    const resolvedUser = internalUser || (await usersService.getUserByEmail(normalizeText(action && action.contact))) || null;
-    if (!resolvedUser) {
-      throw new Error("No se pudo resolver el usuario interno destino.");
+    const resolvedTarget = await resolveInternalTargetFromAction(
+      action,
+      task && task.responseContactId ? task.responseContactId : ""
+    );
+    if (!resolvedTarget) {
+      throw new Error("No se pudo resolver el destino interno.");
     }
     contact = {
-      id: resolvedUser.id,
-      name: resolvedUser.email,
-      type: "user",
+      id: resolvedTarget.storageId,
+      name: resolvedTarget.name,
+      type: resolvedTarget.type,
     };
-    contactTarget = resolvedUser.id;
+    contactTarget = resolvedTarget.target;
   } else {
     contact = contact || (await resolveContactFromAction(action));
     contactTarget = contactsService.getContactMessageTarget(contact, activeChannel);
@@ -1759,6 +1888,9 @@ async function executeTask(taskId, options = {}) {
     const hasConfiguredIntegration = Boolean(normalizeText(task.integrationId));
     const availableContacts = await contactsService.listContacts();
     const availableUsers = await usersService.listUsers();
+    const availableInternalGroups = activeChannel === "internal_chat"
+      ? await internalChatGroupsService.listGroups()
+      : [];
     let availableIntegrations = [];
     if (hasConfiguredIntegration) {
       const configuredIntegration = await integrationsService.getIntegrationById(task.integrationId);
@@ -1768,7 +1900,7 @@ async function executeTask(taskId, options = {}) {
       availableIntegrations = [configuredIntegration];
     }
     const contactsReferenceText = activeChannel === "internal_chat"
-      ? buildUsersReferenceText(availableUsers)
+      ? buildInternalTargetsReferenceText(availableUsers, availableInternalGroups)
       : buildContactsReferenceText(availableContacts);
     const integrationsReferenceText = buildIntegrationsReferenceText(availableIntegrations);
     task = appendLog(task, "execution_route", "ok", "Ruta de ejecucion resuelta", {

@@ -103,12 +103,15 @@
 
     <div class="role-row">
       <label class="field role-field">
-        <span><%= activeChannel === "internal_chat" ? "Usuario destino de respuesta" : "Contacto destino de respuesta" %></span>
+        <span><%= activeChannel === "internal_chat" ? "Destino de respuesta" : "Contacto destino de respuesta" %></span>
         <select id="taskResponseContactId" name="responseContactId">
           <option value="">Sin ruteo automatico</option>
           <% if (activeChannel === "internal_chat") { %>
             <% users.forEach(function(user) { %>
-            <option value="<%= user.id %>"><%= user.email %></option>
+            <option value="user:<%= user.id %>">[Usuario] <%= user.email %></option>
+            <% }) %>
+            <% internalGroups.forEach(function(group) { %>
+            <option value="group:<%= group.id %>">[Grupo] <%= group.name %> (<%= group.membersCount %> miembros)</option>
             <% }) %>
           <% } else { %>
             <% contacts.forEach(function(contact) { %>
@@ -121,8 +124,8 @@
       </label>
       <% if (activeChannel === "internal_chat") { %>
       <div class="field role-field">
-        <span>Grupos permitidos</span>
-        <p class="note">No aplica en chat interno v1.</p>
+        <span>Contexto</span>
+        <p class="note">En chat interno podes asignar la tarea a un usuario o a un grupo desde "Destino de respuesta".</p>
       </div>
       <% } else { %>
       <label class="field role-field">
@@ -235,10 +238,14 @@
         </td>
         <td data-col="proxima_ejecucion"><%= task.nextRunAtFormatted || task.nextRunAt || "-" %></td>
         <% const responseContact = contacts.find(function(c) { return c.id === task.responseContactId; }); %>
-        <% const responseUser = users.find(function(u) { return u.id === task.responseContactId; }); %>
-        <td data-col="respuesta_a"><%= activeChannel === "internal_chat" ? (responseUser ? responseUser.email : "Sin ruteo") : (responseContact ? (responseContact.name + " (" + (activeChannel === "telegram" ? (responseContact.type === "group" ? (responseContact.telegramGroupId || "-") : (responseContact.telegramUserId || "-")) : (responseContact.type === "group" ? (responseContact.groupId || responseContact.whatsappId || "-") : responseContact.phone)) + ")") : "Sin ruteo") %></td>
+        <% const responseTargetRaw = String(task.responseContactId || ""); %>
+        <% const responseTargetType = activeChannel === "internal_chat" ? (responseTargetRaw.includes(":") ? responseTargetRaw.split(":")[0] : "user") : ""; %>
+        <% const responseTargetId = activeChannel === "internal_chat" ? (responseTargetRaw.includes(":") ? responseTargetRaw.split(":").slice(1).join(":") : responseTargetRaw) : ""; %>
+        <% const responseUser = users.find(function(u) { return u.id === responseTargetId; }); %>
+        <% const responseGroup = internalGroups.find(function(g) { return g.id === responseTargetId; }); %>
+        <td data-col="respuesta_a"><%= activeChannel === "internal_chat" ? (responseTargetRaw ? (responseTargetType === "group" ? (responseGroup ? ("[Grupo] " + responseGroup.name) : "Grupo no encontrado") : (responseUser ? ("[Usuario] " + responseUser.email) : "Usuario no encontrado")) : "Sin ruteo") : (responseContact ? (responseContact.name + " (" + (activeChannel === "telegram" ? (responseContact.type === "group" ? (responseContact.telegramGroupId || "-") : (responseContact.telegramUserId || "-")) : (responseContact.type === "group" ? (responseContact.groupId || responseContact.whatsappId || "-") : responseContact.phone)) + ")") : "Sin ruteo") %></td>
         <% const taskAllowedGroups = contacts.filter(function(c) { return c.type === "group" && (task.allowedGroupContactIds || []).includes(c.id); }); %>
-        <td data-col="grupos_permitidos" class="wrap-cell"><%= activeChannel === "internal_chat" ? "No aplica" : (taskAllowedGroups.length > 0 ? taskAllowedGroups.map(function(g) { return g.name; }).join(", ") : "Sin grupos") %></td>
+        <td data-col="grupos_permitidos" class="wrap-cell"><%= activeChannel === "internal_chat" ? "Asignable a usuario/grupo" : (taskAllowedGroups.length > 0 ? taskAllowedGroups.map(function(g) { return g.name; }).join(", ") : "Sin grupos") %></td>
         <% const file = files.find(function(f) { return f.id === task.fileId; }); %>
         <td data-col="archivo"><%= file ? file.originalName : "Sin archivo" %></td>
         <% const integration = integrations.find(function(i) { return i.id === task.integrationId; }); %>
@@ -340,3 +347,4 @@
     </div>
   </div>
 </div>
+
