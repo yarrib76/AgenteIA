@@ -452,6 +452,11 @@ async function resolveInternalTargetFromAction(action, fallbackTargetId = "") {
 }
 
 function buildInternalTargetsReferenceText(users, groups, responseContactId = "") {
+  const compactUsers = (Array.isArray(users) ? users : []).slice(0, 200).map((u) => ({
+    contactId: "user:" + u.id,
+    type: "user",
+    email: u.email,
+  }));
   const compactGroups = (Array.isArray(groups) ? groups : []).slice(0, 200).map((g) => ({
     contactId: "group:" + g.id,
     type: "group",
@@ -465,7 +470,7 @@ function buildInternalTargetsReferenceText(users, groups, responseContactId = ""
     const responseUser = (Array.isArray(users) ? users : []).find((u) => u.id === responseUserId);
     if (responseUser) {
       sections.push(
-        "Usuario destino de respuesta (no usar para elegir grupo de envio):\n" + JSON.stringify({
+        "Usuario destino de respuesta para derivaciones posteriores:\n" + JSON.stringify({
           contactId: "user:" + responseUser.id,
           type: "user",
           email: responseUser.email,
@@ -473,14 +478,18 @@ function buildInternalTargetsReferenceText(users, groups, responseContactId = ""
       );
     }
   }
+  if (compactUsers.length > 0) {
+    sections.push(
+      "Usuarios internos disponibles para send_message (usar contactId cuando corresponda):\n" + JSON.stringify(compactUsers)
+    );
+  }
   if (compactGroups.length > 0) {
     sections.push(
-      "Grupos internos permitidos para send_message (usar contactId):\n" + JSON.stringify(compactGroups)
+      "Grupos internos permitidos para send_message (usar contactId solo si corresponde enviar al grupo):\n" + JSON.stringify(compactGroups)
     );
   }
   return sections.join("\n\n");
 }
-
 function buildIntegrationsReferenceText(integrations) {
   const rows = Array.isArray(integrations) ? integrations : [];
   if (rows.length === 0) return "";
@@ -1585,27 +1594,18 @@ async function applyGlobalGuardrails({
         keptActions.push(action);
         continue;
       }
-      const resolvedTarget = await resolveInternalTargetFromAction(action, "");
+      const fallbackTarget = allowedInternalGroupIds.size === 1
+        ? "group:" + Array.from(allowedInternalGroupIds)[0]
+        : "";
+      const resolvedTarget = await resolveInternalTargetFromAction(action, fallbackTarget);
       if (!resolvedTarget) {
-        if (allowedInternalGroupIds.size === 1) {
-          keptActions.push(action);
-          continue;
-        }
         warnings.push({
           code: "internal_target_missing_skipped",
           actionIndex: i,
         });
         continue;
       }
-      if (resolvedTarget.type !== "group") {
-        warnings.push({
-          code: "internal_user_target_not_allowed_skipped",
-          actionIndex: i,
-          contactId: resolvedTarget.storageId,
-        });
-        continue;
-      }
-      if (!allowedInternalGroupIds.has(resolvedTarget.id)) {
+      if (resolvedTarget.type === "group" && !allowedInternalGroupIds.has(resolvedTarget.id)) {
         warnings.push({
           code: "internal_group_not_allowed_skipped",
           actionIndex: i,
