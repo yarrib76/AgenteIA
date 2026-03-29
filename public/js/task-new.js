@@ -67,11 +67,9 @@
 
   function setReplyRoutingFieldsState() {
     if (taskAllowedGroupContactIdsInput) {
-      taskAllowedGroupContactIdsInput.disabled = isInternalChat;
+      taskAllowedGroupContactIdsInput.disabled = false;
     }
-    if (taskAllowedGroupsPreview && isInternalChat) {
-      taskAllowedGroupsPreview.textContent = "No aplica en chat interno v1.";
-    }
+    refreshAllowedGroupsPreview();
   }
 
   function enableSimpleMultiToggle(selectEl) {
