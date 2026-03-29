@@ -1,0 +1,83 @@
+<div class="card module-card">
+  <div class="card-header">
+    <h2 id="internalGroupFormTitle">Nuevo grupo interno</h2>
+  </div>
+
+  <form id="internalGroupForm" class="form-grid">
+    <input type="hidden" id="internalGroupId" />
+
+    <label class="field">
+      <span>Nombre</span>
+      <input id="internalGroupName" type="text" maxlength="120" required />
+    </label>
+
+    <label class="field">
+      <span>Descripcion</span>
+      <textarea id="internalGroupDescription" rows="3" placeholder="Opcional"></textarea>
+    </label>
+
+    <label class="field">
+      <span>Usuarios del grupo</span>
+      <select id="internalGroupMembers" multiple size="8" required>
+        <% users.forEach(function(user) { %>
+        <option value="<%= user.id %>"><%= user.email %></option>
+        <% }) %>
+      </select>
+      <p id="internalGroupMembersPreview" class="note">Sin usuarios seleccionados.</p>
+    </label>
+
+    <div class="modal-actions">
+      <button id="cancelInternalGroupEditBtn" class="secondary-button hidden" type="button">Cancelar edicion</button>
+      <button id="saveInternalGroupBtn" class="primary-button" type="submit">Guardar grupo</button>
+    </div>
+  </form>
+
+  <p id="internalGroupMsg" class="note"></p>
+</div>
+
+<div class="card module-card mt-16">
+  <div class="card-header">
+    <h2>Grupos registrados</h2>
+  </div>
+
+  <% if (!groups || groups.length === 0) { %>
+  <p class="note">No hay grupos internos creados.</p>
+  <% } else { %>
+  <table class="table" id="internalGroupsTable">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Descripcion</th>
+        <th>Miembros</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% groups.forEach(function(group) { %>
+      <tr>
+        <td><%= group.name %></td>
+        <td><%= group.description || '-' %></td>
+        <td class="wrap-cell"><%= group.members && group.members.length ? group.members.map(function(member) { return member.email; }).join(', ') : 'Sin miembros' %></td>
+        <td>
+          <div class="inline-actions">
+            <button
+              class="secondary-button edit-internal-group-btn"
+              type="button"
+              data-id="<%= group.id %>"
+              data-name="<%= group.name %>"
+              data-description="<%= group.description || '' %>"
+              data-member-user-ids="<%= (group.memberUserIds || []).join(',') %>"
+            >
+              Editar
+            </button>
+            <button class="secondary-button danger-button delete-internal-group-btn" type="button" data-id="<%= group.id %>">
+              Eliminar
+            </button>
+          </div>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>

@@ -1,9 +1,7 @@
 package com.agenteia.internalchat.ui
 
 import android.os.Bundle
-import android.view.View
 import android.widget.EditText
-import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -31,7 +29,6 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var input: EditText
     private lateinit var sendButton: ImageButton
     private lateinit var emojiButton: ImageButton
-    private lateinit var emojiScroll: HorizontalScrollView
     private lateinit var recyclerView: RecyclerView
     private lateinit var conversationId: String
     private lateinit var socketClient: InternalChatSocketClient
@@ -51,7 +48,6 @@ class ChatActivity : AppCompatActivity() {
         input = findViewById(R.id.chatInput)
         sendButton = findViewById(R.id.chatSendButton)
         emojiButton = findViewById(R.id.chatEmojiButton)
-        emojiScroll = findViewById(R.id.chatEmojiScroll)
         recyclerView = findViewById(R.id.chatRecycler)
 
         layoutManager = LinearLayoutManager(this)
@@ -64,27 +60,7 @@ class ChatActivity : AppCompatActivity() {
         swipeRefresh.setOnRefreshListener { loadMessages() }
         sendButton.setOnClickListener { sendMessage() }
         emojiButton.setOnClickListener {
-            emojiScroll.visibility = if (emojiScroll.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-        }
-
-        val emojiIds = listOf(
-            R.id.emojiSmile,
-            R.id.emojiLaugh,
-            R.id.emojiHeart,
-            R.id.emojiThumbs,
-            R.id.emojiRobot,
-            R.id.emojiFire,
-            R.id.emojiCheck,
-            R.id.emojiParty,
-        )
-        val emojiTexts = listOf(":)", ":D", "<3", ";)", "[bot]", "*", "OK", "!")
-        emojiIds.zip(emojiTexts).forEach { (id, value) ->
-            findViewById<TextView>(id).apply {
-                text = value
-                setOnClickListener {
-                    input.append(value)
-                }
-            }
+            input.append("👍")
         }
     }
 
@@ -196,10 +172,8 @@ class ChatActivity : AppCompatActivity() {
                     return@withContext
                 }
                 input.setText("")
-                emojiScroll.visibility = View.GONE
                 loadMessages(scrollToBottom = true)
             }
         }
     }
 }
-

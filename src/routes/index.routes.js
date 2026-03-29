@@ -10,6 +10,7 @@ const taskController = require("../controllers/task.controller");
 const fileController = require("../controllers/file.controller");
 const integrationController = require("../controllers/integration.controller");
 const mobileController = require("../controllers/mobile.controller");
+const internalChatGroupsController = require("../controllers/internal-chat-groups.controller");
 const authService = require("../modules/auth/auth.service");
 const mobileAuthMiddleware = require("../modules/mobile/mobile-auth-middleware");
 
@@ -21,6 +22,7 @@ router.post("/api/mobile/login", mobileController.login);
 router.get("/register", authService.ensureRegistrationAllowed, authController.renderRegisterPage);
 router.post("/register", authService.ensureRegistrationAllowed, authController.register);
 router.post("/logout", authController.logout);
+
 router.use("/api/mobile", mobileAuthMiddleware.ensureMobileAuthenticated);
 router.post("/api/mobile/logout", mobileController.logout);
 router.get("/api/mobile/me", mobileController.getMe);
@@ -41,6 +43,7 @@ router.get("/", messagingController.renderMessagingPage);
 router.get("/whatsapp", messagingController.renderMessagingPage);
 router.get("/mensajeria", messagingController.renderMessagingPage);
 router.get("/usuarios/nuevo", authService.ensureRegistrationAllowed, authController.renderRegisterPage);
+router.get("/grupos-internos", internalChatGroupsController.renderGroupsPage);
 router.get("/agenda", agendaController.renderAgendaPage);
 router.get("/chat", chatController.renderChatPage);
 router.get("/agente/nuevo", agentController.renderNewAgentPage);
@@ -95,5 +98,9 @@ router.post("/api/tasks/:taskId/logs/clear", taskController.clearTaskLogs);
 router.get("/api/files", fileController.listFiles);
 router.post("/api/files/upload", fileController.uploadFile);
 router.delete("/api/files/:fileId", fileController.deleteFile);
+router.get("/api/internal-chat/groups", internalChatGroupsController.listGroups);
+router.post("/api/internal-chat/groups", internalChatGroupsController.createGroup);
+router.put("/api/internal-chat/groups/:groupId", internalChatGroupsController.updateGroup);
+router.delete("/api/internal-chat/groups/:groupId", internalChatGroupsController.deleteGroup);
 
 module.exports = router;

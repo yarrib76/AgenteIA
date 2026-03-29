@@ -30,34 +30,6 @@
     android:paddingTop="4dp"
     android:textColor="@android:color/holo_red_dark" />
 
-  <HorizontalScrollView
-    android:id="@+id/chatEmojiScroll"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="#DDE7E3"
-    android:paddingHorizontal="10dp"
-    android:paddingVertical="8dp"
-    android:visibility="gone"
-    android:fillViewport="true"
-    android:scrollbars="none">
-
-    <LinearLayout
-      android:id="@+id/chatEmojiBar"
-      android:layout_width="wrap_content"
-      android:layout_height="wrap_content"
-      android:orientation="horizontal">
-
-      <TextView android:id="@+id/emojiSmile" style="@style/EmojiButton">😀</TextView>
-      <TextView android:id="@+id/emojiLaugh" style="@style/EmojiButton">😂</TextView>
-      <TextView android:id="@+id/emojiHeart" style="@style/EmojiButton">❤️</TextView>
-      <TextView android:id="@+id/emojiThumbs" style="@style/EmojiButton">👍</TextView>
-      <TextView android:id="@+id/emojiRobot" style="@style/EmojiButton">🤖</TextView>
-      <TextView android:id="@+id/emojiFire" style="@style/EmojiButton">🔥</TextView>
-      <TextView android:id="@+id/emojiCheck" style="@style/EmojiButton">✅</TextView>
-      <TextView android:id="@+id/emojiParty" style="@style/EmojiButton">🎉</TextView>
-    </LinearLayout>
-  </HorizontalScrollView>
-
   <LinearLayout
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -71,8 +43,8 @@
       android:layout_width="44dp"
       android:layout_height="44dp"
       android:background="@drawable/bg_icon_button"
-      android:contentDescription="emoji"
-      android:src="@drawable/ic_emoji" />
+      android:contentDescription="thumbs up"
+      android:src="@drawable/ic_thumb_up" />
 
     <EditText
       android:id="@+id/chatInput"
@@ -98,4 +70,3 @@
   </LinearLayout>
 
 </LinearLayout>
-

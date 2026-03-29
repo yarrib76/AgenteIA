@@ -1,4 +1,5 @@
 const internalChatService = require("./internal-chat.service");
+const internalChatGroupsService = require("./internal-chat-groups.service");
 const messagingGateway = require("../messaging/messaging.gateway");
 const usersService = require("../auth/users.service");
 const internalChatPushService = require("./internal-chat.push.service");
@@ -51,15 +52,26 @@ function buildInternalChatProvider() {
       const recipient = await internalChatService.resolveUserTarget(target);
       return [recipient.id];
     },
-    listGroups: async () => [],
+    listGroups: async () => {
+      const groups = await internalChatGroupsService.listGroups();
+      return groups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        membersCount: group.membersCount,
+      }));
+    },
     getPublicStatus: async () => {
-      const users = await usersService.listUsers();
+      const [users, groups] = await Promise.all([
+        usersService.listUsers(),
+        internalChatGroupsService.listGroups(),
+      ]);
       return {
         linked: true,
         ready: true,
         statusText: "Chat interno disponible.",
         hasClient: true,
         usersCount: users.length,
+        groupsCount: groups.length,
       };
     },
     refreshLink: async () => true,
