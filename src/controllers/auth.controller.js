@@ -35,7 +35,7 @@ function renderRegister(res, req, viewModel, statusCode = 200) {
       headerTitle: "Nuevo Usuario",
       moduleView: "auth-register",
       moduleData: viewModel,
-      pageScripts: [],
+      pageScripts: ["/js/auth-users.js"],
     });
   }
   return res.status(statusCode).render("layouts/auth", {
@@ -170,10 +170,17 @@ async function register(req, res) {
 
 async function updateUser(req, res) {
   try {
+    const password = String(req.body.password || "");
+    const confirmPassword = String(req.body.confirmPassword || "");
+    if (normalizeText(password) || normalizeText(confirmPassword)) {
+      if (password !== confirmPassword) {
+        throw new Error("Las contraseñas no coinciden.");
+      }
+    }
     await usersService.updateUser(req.params.userId, {
       name: normalizeText(req.body.name),
       email: normalizeText(req.body.email),
-      password: String(req.body.password || ""),
+      password,
     });
     return res.redirect("/usuarios/nuevo?success=Usuario actualizado correctamente.");
   } catch (error) {

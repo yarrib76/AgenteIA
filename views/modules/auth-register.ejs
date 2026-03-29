@@ -2,8 +2,8 @@
 <div class="auth-card">
   <div>
     <p class="auth-eyebrow"><%= view.currentUser ? 'Usuarios' : 'Onboarding' %></p>
-    <h2 class="auth-title"><%= view.currentUser ? 'Crear nuevo usuario' : 'Crear primer usuario' %></h2>
-    <p class="auth-copy">El nombre ayuda a identificar a la persona dentro del sistema. El email sigue siendo el identificador de acceso.</p>
+    <h2 id="usersFormTitle" class="auth-title"><%= view.currentUser ? 'Crear nuevo usuario' : 'Crear primer usuario' %></h2>
+    <p id="usersFormCopy" class="auth-copy">El nombre ayuda a identificar a la persona dentro del sistema. El email sigue siendo el identificador de acceso.</p>
   </div>
 
   <% if (view.error) { %>
@@ -14,30 +14,36 @@
     <div class="auth-alert auth-alert-success"><%= view.success %></div>
   <% } %>
 
-  <form class="auth-form" method="post" action="/register">
+  <form id="userForm" class="auth-form" method="post" action="/register">
     <input type="hidden" name="next" value="<%= view.next %>" />
+    <input type="hidden" id="userFormMode" value="create" />
     <label class="field">
       <span>Nombre</span>
-      <input type="text" name="name" value="<%= view.name || '' %>" autocomplete="name" />
+      <input id="userNameInput" type="text" name="name" value="<%= view.name || '' %>" autocomplete="name" />
     </label>
     <label class="field">
       <span>Email</span>
-      <input type="email" name="email" value="<%= view.email %>" autocomplete="email" required />
+      <input id="userEmailInput" type="email" name="email" value="<%= view.email %>" autocomplete="email" required />
     </label>
     <label class="field">
-      <span>Contraseña</span>
-      <input type="password" name="password" autocomplete="new-password" required />
-      <small class="field-hint">Mínimo 8 caracteres, con mayúsculas, minúsculas y números.</small>
+      <span id="userPasswordLabel">Contraseña</span>
+      <input id="userPasswordInput" type="password" name="password" autocomplete="new-password" required />
+      <small id="userPasswordHint" class="field-hint">Mínimo 8 caracteres, con mayúsculas, minúsculas y números.</small>
     </label>
     <label class="field">
-      <span>Confirmar contraseña</span>
-      <input type="password" name="confirmPassword" autocomplete="new-password" required />
+      <span id="userConfirmPasswordLabel">Confirmar contraseña</span>
+      <input id="userConfirmPasswordInput" type="password" name="confirmPassword" autocomplete="new-password" required />
     </label>
-    <label class="field">
+    <label id="captchaField" class="field">
       <span>Captcha: resolvé <strong><%= view.challenge.prompt %></strong></span>
-      <input type="text" name="captchaAnswer" inputmode="numeric" required />
+      <input id="captchaInput" type="text" name="captchaAnswer" inputmode="numeric" required />
     </label>
-    <button class="primary-button auth-submit" type="submit">Crear usuario</button>
+    <div class="inline-actions">
+      <button id="userSubmitBtn" class="primary-button auth-submit" type="submit">Crear usuario</button>
+      <% if (view.currentUser) { %>
+      <button id="cancelUserEditBtn" class="secondary-button hidden" type="button">Cancelar edición</button>
+      <% } %>
+    </div>
   </form>
 
   <% if (view.currentUser) { %>
@@ -48,37 +54,47 @@
       <% if (!view.users || view.users.length === 0) { %>
         <p class="note">No hay usuarios creados.</p>
       <% } else { %>
-        <div class="stack-list">
-          <% view.users.forEach(function(user) { %>
-          <form method="post" action="/usuarios/<%= user.id %>/actualizar" class="card module-card mb-12">
-            <div class="form-grid">
-              <label class="field">
-                <span>Nombre</span>
-                <input type="text" name="name" value="<%= user.name || '' %>" placeholder="Sin nombre" />
-              </label>
-              <label class="field">
-                <span>Email</span>
-                <input type="email" name="email" value="<%= user.email %>" required />
-              </label>
-              <label class="field">
-                <span>Nueva contraseña</span>
-                <input type="password" name="password" placeholder="Opcional" />
-                <small class="field-hint">Dejá vacío para no cambiarla.</small>
-              </label>
-              <div class="field">
-                <span>Alta</span>
-                <div class="note"><%= user.createdAt || '-' %></div>
-              </div>
-            </div>
-            <div class="inline-actions mt-8">
-              <button class="secondary-button" type="submit">Guardar cambios</button>
-            </div>
-          </form>
-          <form method="post" action="/usuarios/<%= user.id %>/eliminar" class="inline-actions mb-16" onsubmit="return confirm('¿Eliminar este usuario?');">
-            <button class="danger-button" type="submit">Eliminar</button>
-          </form>
-          <% }) %>
+        <div class="tasks-table-tools">
+          <label class="field">
+            <span>Buscar</span>
+            <input id="usersTableSearch" type="text" placeholder="Buscar usuario..." autocomplete="off" />
+          </label>
         </div>
+        <table id="usersTable" class="table">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Email</th>
+              <th>Alta</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% view.users.forEach(function(user) { %>
+            <tr>
+              <td data-col="nombre"><%= user.name || '-' %></td>
+              <td data-col="email"><%= user.email %></td>
+              <td data-col="alta"><%= user.createdAt || '-' %></td>
+              <td data-col="acciones">
+                <div class="inline-actions">
+                  <button
+                    class="secondary-button edit-user-btn"
+                    type="button"
+                    data-user-id="<%= user.id %>"
+                    data-user-name="<%= user.name || '' %>"
+                    data-user-email="<%= user.email %>"
+                  >
+                    Modificar
+                  </button>
+                  <form method="post" action="/usuarios/<%= user.id %>/eliminar" onsubmit="return confirm('¿Eliminar este usuario?');">
+                    <button class="danger-button" type="submit">Eliminar</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
       <% } %>
     </div>
   <% } %>
