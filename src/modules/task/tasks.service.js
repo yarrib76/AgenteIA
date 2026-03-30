@@ -2389,7 +2389,7 @@ async function executeTask(taskId, options = {}) {
           task,
           "whatsapp_requirement",
           "ok",
-          "Sin datos en API: se permite actions=[] sin envio de WhatsApp",
+          "Sin datos en API: se permite actions=[] sin envio de mensajes",
           {
             rowCount: apiResult && apiResult.responseJson ? apiResult.responseJson.rowCount : null,
           }
