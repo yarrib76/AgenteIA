@@ -28,4 +28,4 @@ data/*
 .gradle-user-home/
 tools/android-home/
 tools/tmp-gradle/
-
+android-app/app-debug.apk
