@@ -25,7 +25,7 @@
 
   <p id="usersFormCopy" class="note">El nombre ayuda a identificar a la persona dentro del sistema. El email sigue siendo el identificador de acceso.</p>
 
-  <form id="userForm" class="form-grid">
+  <form id="userForm" class="form-grid" method="post" action="/register">
     <input type="hidden" name="next" value="<%= view.next %>" />
     <input type="hidden" id="userFormMode" value="create" />
 
