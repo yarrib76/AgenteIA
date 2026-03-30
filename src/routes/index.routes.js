@@ -19,6 +19,7 @@ const router = express.Router();
 router.get("/login", authController.renderLoginPage);
 router.post("/login", authController.login);
 router.post("/api/mobile/login", mobileController.login);
+router.get("/files/content/:fileId", fileController.getFileContent);
 router.get("/register", authService.ensureRegistrationAllowed, authController.renderRegisterPage);
 router.post("/register", authService.ensureRegistrationAllowed, authController.register);
 router.post("/logout", authController.logout);

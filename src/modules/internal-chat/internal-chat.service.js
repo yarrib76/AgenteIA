@@ -43,7 +43,7 @@ function normalizeAttachment(row) {
     mimeType,
     originalName,
     relativePath,
-    url: `/${relativePath.replace(/^\/+/, "")}`,
+    url: `/files/content/${fileId}`,
   };
 }
 

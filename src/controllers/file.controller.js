@@ -1,5 +1,6 @@
 const filesService = require("../modules/file/files.service");
 const tasksService = require("../modules/task/tasks.service");
+const path = require("path");
 
 function formatDateTime(value) {
   const date = new Date(value);
@@ -65,9 +66,26 @@ async function deleteFile(req, res) {
   }
 }
 
+async function getFileContent(req, res) {
+  try {
+    const file = await filesService.getFileById(req.params.fileId);
+    if (!file) {
+      return res.status(404).send("Archivo no encontrado.");
+    }
+    const absolutePath = path.join(process.cwd(), file.relativePath);
+    if (file.mimeType) {
+      res.type(file.mimeType);
+    }
+    return res.sendFile(absolutePath);
+  } catch (error) {
+    return res.status(400).send(error.message || "No se pudo abrir el archivo.");
+  }
+}
+
 module.exports = {
   renderManageFilesPage,
   listFiles,
   uploadFile,
   deleteFile,
+  getFileContent,
 };
