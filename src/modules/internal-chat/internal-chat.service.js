@@ -43,7 +43,8 @@ function normalizeAttachment(row) {
     mimeType,
     originalName,
     relativePath,
-    url: `/files/content/${fileId}`,
+    url: `/${relativePath.replace(/^\/+/, "")}`,
+    fallbackUrl: `/files/content/${fileId}`,
   };
 }
 

@@ -54,7 +54,7 @@
           ? `<div class="meta"><strong>${escapeHtml(msg.senderName)}</strong></div>`
           : "";
         const imageHtml = msg.attachment && msg.attachment.type === "image" && msg.attachment.url
-          ? `<img class="chat-image" src="${escapeAttribute(msg.attachment.url)}" alt="${escapeAttribute(msg.attachment.originalName || "imagen")}" />`
+          ? `<img class="chat-image" src="${escapeAttribute(msg.attachment.url)}" data-fallback-src="${escapeAttribute(msg.attachment.fallbackUrl || "")}" onerror="if(this.dataset.fallbackSrc && this.src.indexOf(this.dataset.fallbackSrc)===-1){this.src=this.dataset.fallbackSrc;}else{this.style.display='none';}" alt="${escapeAttribute(msg.attachment.originalName || "imagen")}" />`
           : "";
         const textHtml = String(msg.text || "").trim()
           ? `<div>${escapeHtml(msg.text)}</div>`

@@ -55,7 +55,12 @@
         <div class="meta"><strong><%= msg.senderName %></strong></div>
         <% } %>
         <% if (msg.attachment && msg.attachment.type === 'image' && msg.attachment.url) { %>
-        <img class="chat-image" src="<%= msg.attachment.url %>" alt="<%= msg.attachment.originalName || 'imagen' %>" />
+        <img
+          class="chat-image"
+          src="<%= msg.attachment.url %>"
+          data-fallback-src="<%= msg.attachment.fallbackUrl || '' %>"
+          onerror="if(this.dataset.fallbackSrc && this.src.indexOf(this.dataset.fallbackSrc)===-1){this.src=this.dataset.fallbackSrc;}else{this.style.display='none';}"
+          alt="<%= msg.attachment.originalName || 'imagen' %>" />
         <% } %>
         <% if (msg.text) { %>
         <div><%= msg.text %></div>
