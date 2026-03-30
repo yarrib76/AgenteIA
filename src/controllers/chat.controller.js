@@ -4,6 +4,7 @@ const messagingGateway = require("../modules/messaging/messaging.gateway");
 const usersService = require("../modules/auth/users.service");
 const internalChatService = require("../modules/internal-chat/internal-chat.service");
 const internalChatGroupsService = require("../modules/internal-chat/internal-chat-groups.service");
+const { SYSTEM_USER_ID } = require("../modules/internal-chat/internal-chat.service");
 
 function formatDateTime(value, timeZone = "America/Argentina/Buenos_Aires") {
   if (!value) return "-";
@@ -33,22 +34,34 @@ function parseInternalTargetId(value) {
   return { type: "user", id: raw };
 }
 
-async function buildInternalTargets(currentUserId) {
+function resolveInternalActor(req) {
+  const mode = String((req && (req.query.actor || (req.body && req.body.actor))) || "user").trim().toLowerCase();
+  if (mode === "system") {
+    return { mode: "system", userId: SYSTEM_USER_ID, label: "Sistema" };
+  }
+  return {
+    mode: "user",
+    userId: req && req.currentUser ? req.currentUser.id : "",
+    label: req && req.currentUser ? (req.currentUser.name || req.currentUser.email) : "Usuario",
+  };
+}
+
+async function buildInternalTargets(currentUserId, actorMode = "user") {
   const [users, groups] = await Promise.all([
     usersService.listUsers(),
     internalChatGroupsService.listGroups(),
   ]);
   const directTargets = (users || [])
-    .filter((user) => !currentUserId || user.id !== currentUserId)
+    .filter((user) => actorMode === "system" || !currentUserId || user.id !== currentUserId)
     .map((user) => ({
       id: `user:${user.id}`,
       rawId: user.id,
-      name: user.email,
+      name: user.name || user.email,
       type: "user",
       targetLabel: user.email,
     }));
   const groupTargets = (groups || [])
-    .filter((group) => !currentUserId || (group.memberUserIds || []).includes(currentUserId))
+    .filter((group) => actorMode === "system" || !currentUserId || (group.memberUserIds || []).includes(currentUserId))
     .map((group) => ({
       id: `group:${group.id}`,
       rawId: group.id,
@@ -62,22 +75,23 @@ async function buildInternalTargets(currentUserId) {
 async function renderChatPage(req, res) {
   const activeChannel = await messagingGateway.getChannel();
   if (activeChannel === "internal_chat") {
-    const contacts = await buildInternalTargets(req.currentUser && req.currentUser.id);
+    const actor = resolveInternalActor(req);
+    const contacts = await buildInternalTargets(req.currentUser && req.currentUser.id, actor.mode);
     const selectedContactId = req.query.contactId || (contacts[0] && contacts[0].id);
     const selectedContact = contacts.find((contact) => contact.id === selectedContactId) || null;
     const parsed = parseInternalTargetId(selectedContactId);
     let conversation = null;
-    if (selectedContact && req.currentUser && parsed) {
+    if (selectedContact && parsed) {
       conversation = parsed.type === "group"
         ? await internalChatService.getConversationForGroup(parsed.id)
-        : await internalChatService.getConversationForUsers(req.currentUser.id, parsed.id);
+        : await internalChatService.getConversationForUsers(actor.userId, parsed.id);
     }
     const messages = conversation
-      ? await internalChatService.listConversationMessages(conversation.id, req.currentUser.id)
+      ? await internalChatService.listConversationMessages(conversation.id, actor.userId)
       : [];
     const messagesWithFormattedTime = (messages || []).map((msg) => ({
       ...msg,
-      direction: msg.senderUserId === req.currentUser.id ? "out" : "in",
+      direction: msg.senderUserId === actor.userId ? "out" : "in",
       timestampFormatted: formatDateTime(msg.timestamp),
       conversationType: msg.conversationType || (selectedContact && selectedContact.type === "group" ? "group" : "direct"),
       senderName: msg.senderName || "",
@@ -95,6 +109,8 @@ async function renderChatPage(req, res) {
         channelReady: true,
         activeChannel,
         selectedContactConfigured: Boolean(selectedContact),
+        internalActorMode: actor.mode,
+        internalActorLabel: actor.label,
       },
       pageScripts: ["/js/chat.js"],
     });
@@ -141,6 +157,7 @@ async function getConversation(req, res) {
     if (!req.currentUser) {
       return res.status(401).json({ ok: false, message: "Sesion invalida." });
     }
+    const actor = resolveInternalActor(req);
     const parsed = parseInternalTargetId(req.params.contactId);
     if (!parsed) {
       return res.status(404).json({ ok: false, message: "Destino no encontrado." });
@@ -148,21 +165,21 @@ async function getConversation(req, res) {
 
     if (parsed.type === "group") {
       const group = await internalChatGroupsService.getGroupById(parsed.id);
-      if (!group || !(group.memberUserIds || []).includes(req.currentUser.id)) {
+      if (!group || (actor.mode !== "system" && !(group.memberUserIds || []).includes(req.currentUser.id))) {
         return res.status(404).json({ ok: false, message: "Grupo no encontrado." });
       }
       const conversation = await internalChatService.getConversationForGroup(group.id);
       const conversationId = conversation ? conversation.id : internalChatService.buildGroupConversationId(group.id);
       const messages = conversation
-        ? await internalChatService.listConversationMessages(conversation.id, req.currentUser.id)
+        ? await internalChatService.listConversationMessages(conversation.id, actor.userId)
         : [];
-      await internalChatService.markConversationRead(conversationId, req.currentUser.id);
+      await internalChatService.markConversationRead(conversationId, actor.userId);
       return res.json({
         ok: true,
         contact: { id: `group:${group.id}`, name: group.name, type: "group" },
         messages: messages.map((msg) => ({
           ...msg,
-          direction: msg.senderUserId === req.currentUser.id ? "out" : "in",
+          direction: msg.senderUserId === actor.userId ? "out" : "in",
           conversationType: msg.conversationType || "group",
           senderName: msg.senderName || "",
         })),
@@ -172,20 +189,20 @@ async function getConversation(req, res) {
     }
 
     const user = await usersService.getUserById(parsed.id);
-    if (!user || user.id === req.currentUser.id) {
+    if (!user || (actor.mode !== "system" && user.id === req.currentUser.id)) {
       return res.status(404).json({ ok: false, message: "Usuario no encontrado." });
     }
-    const conversation = await internalChatService.getConversationForUsers(req.currentUser.id, user.id);
+    const conversation = await internalChatService.getConversationForUsers(actor.userId, user.id);
     const messages = conversation
-      ? await internalChatService.listConversationMessages(conversation.id, req.currentUser.id)
+      ? await internalChatService.listConversationMessages(conversation.id, actor.userId)
       : [];
     await internalChatService.markConversationRead(
-      conversation ? conversation.id : internalChatService.buildConversationId(req.currentUser.id, user.id),
-      req.currentUser.id
+      conversation ? conversation.id : internalChatService.buildConversationId(actor.userId, user.id),
+      actor.userId
     );
     return res.json({
       ok: true,
-      contact: { id: `user:${user.id}`, name: user.email, type: "user" },
+      contact: { id: `user:${user.id}`, name: user.name || user.email, type: "user" },
       messages: messages.map((msg) => ({
         ...msg,
         direction: msg.senderUserId === req.currentUser.id ? "out" : "in",
@@ -224,6 +241,7 @@ async function sendMessage(req, res) {
       if (!req.currentUser) {
         return res.status(401).json({ ok: false, message: "Sesion invalida." });
       }
+      const actor = resolveInternalActor(req);
       const parsed = parseInternalTargetId(req.body.contactId);
       if (!parsed) {
         return res.status(404).json({ ok: false, message: "Destino no encontrado." });
@@ -234,12 +252,12 @@ async function sendMessage(req, res) {
       }
       if (parsed.type === "group") {
         const group = await internalChatGroupsService.getGroupById(parsed.id);
-        if (!group || !(group.memberUserIds || []).includes(req.currentUser.id)) {
+        if (!group || (actor.mode !== "system" && !(group.memberUserIds || []).includes(req.currentUser.id))) {
           return res.status(404).json({ ok: false, message: "Grupo no encontrado." });
         }
         const result = await messagingGateway.sendMessage(`group:${group.id}`, text, {
           channel: "internal_chat",
-          senderUserId: req.currentUser.id,
+          senderUserId: actor.userId,
         });
         return res.status(201).json({
           ok: true,
@@ -253,12 +271,12 @@ async function sendMessage(req, res) {
         });
       }
       const recipient = await usersService.getUserById(parsed.id);
-      if (!recipient || recipient.id === req.currentUser.id) {
+      if (!recipient || (actor.mode !== "system" && recipient.id === req.currentUser.id)) {
         return res.status(404).json({ ok: false, message: "Usuario no encontrado." });
       }
       const result = await messagingGateway.sendMessage(recipient.id, text, {
         channel: "internal_chat",
-        senderUserId: req.currentUser.id,
+        senderUserId: actor.userId,
       });
       return res.status(201).json({
         ok: true,
@@ -309,6 +327,7 @@ async function clearConversation(req, res) {
       if (!req.currentUser) {
         return res.status(401).json({ ok: false, message: "Sesion invalida." });
       }
+      const actor = resolveInternalActor(req);
       const parsed = parseInternalTargetId(req.params.contactId || req.body.contactId);
       if (!parsed) {
         return res.status(404).json({ ok: false, message: "Destino no encontrado." });
@@ -316,18 +335,18 @@ async function clearConversation(req, res) {
       let conversationId = "";
       if (parsed.type === "group") {
         const group = await internalChatGroupsService.getGroupById(parsed.id);
-        if (!group || !(group.memberUserIds || []).includes(req.currentUser.id)) {
+        if (!group || (actor.mode !== "system" && !(group.memberUserIds || []).includes(req.currentUser.id))) {
           return res.status(404).json({ ok: false, message: "Grupo no encontrado." });
         }
         conversationId = internalChatService.buildGroupConversationId(group.id);
       } else {
         const user = await usersService.getUserById(parsed.id);
-        if (!user || user.id === req.currentUser.id) {
+        if (!user || (actor.mode !== "system" && user.id === req.currentUser.id)) {
           return res.status(404).json({ ok: false, message: "Usuario no encontrado." });
         }
-        conversationId = internalChatService.buildConversationId(req.currentUser.id, user.id);
+        conversationId = internalChatService.buildConversationId(actor.userId, user.id);
       }
-      const deletedCount = await internalChatService.clearConversation(conversationId, req.currentUser.id);
+      const deletedCount = await internalChatService.clearConversation(conversationId, actor.userId);
       return res.json({ ok: true, deletedCount, activeChannel });
     }
     const contactId = req.params.contactId || req.body.contactId;

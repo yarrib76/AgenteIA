@@ -4,6 +4,16 @@
   </div>
 
   <div class="chat-toolbar">
+    <% if (activeChannel === "internal_chat") { %>
+    <label class="field">
+      <span>Modo</span>
+      <select id="internalActorModeSelect">
+        <option value="user" <%= internalActorMode === "user" ? "selected" : "" %>>Ver como usuario</option>
+        <option value="system" <%= internalActorMode === "system" ? "selected" : "" %>>Ver mensajes del Sistema</option>
+      </select>
+    </label>
+    <% } %>
+
     <label class="field">
       <span><%= activeChannel === "internal_chat" ? "Destino interno" : "Contacto" %></span>
       <select id="contactSelect">
@@ -19,6 +29,7 @@
         <% }) %>
       </select>
     </label>
+
     <button id="clearHistoryBtn" class="secondary-button danger-button" type="button">
       Borrar historial
     </button>
@@ -53,6 +64,7 @@
 
   <form id="chatForm" class="chat-form">
     <input type="hidden" id="activeChannel" value="<%= activeChannel %>" />
+    <input type="hidden" id="internalActorMode" value="<%= internalActorMode || 'user' %>" />
     <input type="hidden" id="selectedContactConfigured" value="<%= selectedContactConfigured ? 'true' : 'false' %>" />
     <input type="text" id="chatInput" maxlength="2000" placeholder="Escribe un mensaje..." required <%= selectedContactConfigured ? "" : "disabled" %> />
     <button class="primary-button" type="submit" <%= selectedContactConfigured ? "" : "disabled" %>>Enviar</button>

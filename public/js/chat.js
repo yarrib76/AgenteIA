@@ -6,13 +6,20 @@
   const chatStatus = document.getElementById("chatStatus");
   const clearHistoryBtn = document.getElementById("clearHistoryBtn");
   const activeChannelInput = document.getElementById("activeChannel");
+  const internalActorModeInput = document.getElementById("internalActorMode");
+  const internalActorModeSelect = document.getElementById("internalActorModeSelect");
   const selectedContactConfiguredInput = document.getElementById("selectedContactConfigured");
-  const sendButton = chatForm.querySelector('button[type="submit"]');
+  const sendButton = chatForm ? chatForm.querySelector('button[type="submit"]') : null;
   let refreshTimer = null;
   let lastRenderedFingerprint = "";
   const chatTimeZone = "America/Argentina/Buenos_Aires";
 
   if (!contactSelect || !chatForm) return;
+
+  function buildActorQuery() {
+    if (!internalActorModeInput || !internalActorModeInput.value) return "";
+    return "?actor=" + encodeURIComponent(internalActorModeInput.value);
+  }
 
   function renderMessages(messages) {
     const fingerprint = JSON.stringify(
@@ -27,6 +34,7 @@
       chatWindow.innerHTML = '<p class="note">Sin mensajes recientes para este contacto.</p>';
       return;
     }
+
     chatWindow.innerHTML = messages
       .map((msg) => {
         const cls = msg.direction === "out" ? "out" : "in";
@@ -76,7 +84,7 @@
       return;
     }
     try {
-      const response = await fetch(`/api/chat/${contactId}/messages`);
+      const response = await fetch(`/api/chat/${contactId}/messages${buildActorQuery()}`);
       const data = await response.json();
       if (!response.ok || !data.ok) {
         throw new Error(data.message || "No se pudo cargar la conversacion.");
@@ -94,8 +102,13 @@
           : activeChannelInput && activeChannelInput.value === "internal_chat"
             ? "interna"
             : "WhatsApp";
+      const actorLabel = internalActorModeInput && internalActorModeInput.value === "system"
+        ? "Sistema"
+        : "tu usuario";
       chatStatus.textContent = configured
-        ? `Conversacion ${channelLabel} con ${data.contact.name}`
+        ? (activeChannelInput && activeChannelInput.value === "internal_chat"
+            ? `Conversacion ${channelLabel} con ${data.contact.name} (${actorLabel})`
+            : `Conversacion ${channelLabel} con ${data.contact.name}`)
         : `El contacto ${data.contact.name} no esta configurado para este canal.`;
     } catch (error) {
       chatStatus.textContent = error.message;
@@ -117,6 +130,16 @@
     restartAutoRefresh();
   });
 
+  if (internalActorModeSelect && internalActorModeInput) {
+    internalActorModeSelect.addEventListener("change", () => {
+      internalActorModeInput.value = internalActorModeSelect.value;
+      const params = new URLSearchParams(window.location.search);
+      if (contactSelect.value) params.set("contactId", contactSelect.value);
+      params.set("actor", internalActorModeSelect.value);
+      window.location.search = params.toString();
+    });
+  }
+
   chatForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const contactId = contactSelect.value;
@@ -135,7 +158,11 @@
       const response = await fetch("/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactId, message }),
+        body: JSON.stringify({
+          contactId,
+          message,
+          actor: internalActorModeInput ? internalActorModeInput.value : "user",
+        }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -165,7 +192,10 @@
         const response = await fetch("/api/chat/clear", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contactId }),
+          body: JSON.stringify({
+            contactId,
+            actor: internalActorModeInput ? internalActorModeInput.value : "user",
+          }),
         });
         const data = await response.json();
         if (!response.ok || !data.ok) {
