@@ -1,5 +1,5 @@
 <% const view = typeof authData !== 'undefined' ? authData : { currentUser, error, name, email, next, success, challenge, users }; %>
-<div class="auth-card">
+<div class="auth-card <%= view.currentUser ? "auth-card-wide" : "" %>">
   <div>
     <p class="auth-eyebrow"><%= view.currentUser ? 'Usuarios' : 'Onboarding' %></p>
     <h2 id="usersFormTitle" class="auth-title"><%= view.currentUser ? 'Crear nuevo usuario' : 'Crear primer usuario' %></h2>
@@ -60,7 +60,7 @@
             <input id="usersTableSearch" type="text" placeholder="Buscar usuario..." autocomplete="off" />
           </label>
         </div>
-        <table id="usersTable" class="table">
+        <div class="table-wrap"><table id="usersTable" class="table">
           <thead>
             <tr>
               <th>Nombre</th>
@@ -94,7 +94,7 @@
             </tr>
             <% }) %>
           </tbody>
-        </table>
+        </table></div>
       <% } %>
     </div>
   <% } %>
@@ -107,3 +107,4 @@
     <% } %>
   </div>
 </div>
+
