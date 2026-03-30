@@ -2,6 +2,7 @@ package com.agenteia.internalchat.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -18,6 +19,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
         title = getString(R.string.server_settings)
+        WindowInsetsHelper.applySystemBarsPadding(findViewById<View>(R.id.settingsRoot), includeImeBottom = true)
 
         settingsStore = ServerSettingsStore(this)
         backendUrlInput = findViewById(R.id.settingsBackendUrlInput)

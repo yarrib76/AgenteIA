@@ -1,10 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/chatRoot"
   xmlns:app="http://schemas.android.com/apk/res-auto"
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:orientation="vertical"
   android:background="#EFEAE2">
+
+  <TextView
+    android:id="@+id/chatConversationTitle"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#E7E0D4"
+    android:ellipsize="end"
+    android:maxLines="1"
+    android:paddingHorizontal="16dp"
+    android:paddingTop="14dp"
+    android:paddingBottom="10dp"
+    android:text="@string/chat_title"
+    android:textColor="#1E293B"
+    android:textSize="18sp"
+    android:textStyle="bold" />
 
   <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
     android:id="@+id/chatRefresh"
@@ -31,6 +47,51 @@
     android:textColor="@android:color/holo_red_dark" />
 
   <LinearLayout
+    android:id="@+id/chatAttachmentPreview"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="10dp"
+    android:layout_marginTop="6dp"
+    android:background="#F6F1E8"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="10dp"
+    android:visibility="gone">
+
+    <ImageView
+      android:id="@+id/chatAttachmentImage"
+      android:layout_width="72dp"
+      android:layout_height="72dp"
+      android:adjustViewBounds="true"
+      android:contentDescription="imagen seleccionada"
+      android:scaleType="centerCrop" />
+
+    <LinearLayout
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_weight="1"
+      android:layout_marginStart="12dp"
+      android:orientation="vertical">
+
+      <TextView
+        android:id="@+id/chatAttachmentName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="#1E293B"
+        android:textStyle="bold" />
+
+      <Button
+        android:id="@+id/chatAttachmentClearButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/remove_image" />
+    </LinearLayout>
+  </LinearLayout>
+
+  <LinearLayout
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="#F6F1E8"
@@ -39,9 +100,18 @@
     android:padding="10dp">
 
     <ImageButton
+      android:id="@+id/chatAttachButton"
+      android:layout_width="44dp"
+      android:layout_height="44dp"
+      android:background="@drawable/bg_icon_button"
+      android:contentDescription="adjuntar imagen"
+      android:src="@android:drawable/ic_menu_gallery" />
+
+    <ImageButton
       android:id="@+id/chatEmojiButton"
       android:layout_width="44dp"
       android:layout_height="44dp"
+      android:layout_marginStart="8dp"
       android:background="@drawable/bg_icon_button"
       android:contentDescription="thumbs up"
       android:src="@drawable/ic_thumb_up" />
@@ -70,3 +140,4 @@
   </LinearLayout>
 
 </LinearLayout>
+

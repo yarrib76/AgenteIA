@@ -10,8 +10,15 @@
   const internalActorModeSelect = document.getElementById("internalActorModeSelect");
   const selectedContactConfiguredInput = document.getElementById("selectedContactConfigured");
   const sendButton = chatForm ? chatForm.querySelector('button[type="submit"]') : null;
+  const attachButton = document.getElementById("chatAttachBtn");
+  const imageInput = document.getElementById("chatImageInput");
+  const attachmentPreview = document.getElementById("chatAttachmentPreview");
+  const attachmentImage = document.getElementById("chatAttachmentImage");
+  const attachmentName = document.getElementById("chatAttachmentName");
+  const attachmentClear = document.getElementById("chatAttachmentClear");
   let refreshTimer = null;
   let lastRenderedFingerprint = "";
+  let pendingAttachment = null;
   const chatTimeZone = "America/Argentina/Buenos_Aires";
 
   if (!contactSelect || !chatForm) return;
@@ -23,7 +30,7 @@
 
   function renderMessages(messages) {
     const fingerprint = JSON.stringify(
-      (messages || []).map((m) => [m.id, m.timestamp, m.text, m.direction, m.senderName, m.conversationType])
+      (messages || []).map((m) => [m.id, m.timestamp, m.text, m.direction, m.senderName, m.conversationType, m.attachment && m.attachment.url])
     );
     if (fingerprint === lastRenderedFingerprint) {
       return;
@@ -46,8 +53,14 @@
         const senderHtml = showSender
           ? `<div class="meta"><strong>${escapeHtml(msg.senderName)}</strong></div>`
           : "";
+        const imageHtml = msg.attachment && msg.attachment.type === "image" && msg.attachment.url
+          ? `<img class="chat-image" src="${escapeAttribute(msg.attachment.url)}" alt="${escapeAttribute(msg.attachment.originalName || "imagen")}" />`
+          : "";
+        const textHtml = String(msg.text || "").trim()
+          ? `<div>${escapeHtml(msg.text)}</div>`
+          : "";
         return `<div class="message ${cls}">
-          <div class="bubble">${senderHtml}${escapeHtml(msg.text)}</div>
+          <div class="bubble">${senderHtml}${imageHtml}${textHtml}</div>
           <span class="meta">${escapeHtml(timestamp)}</span>
         </div>`;
       })
@@ -78,6 +91,63 @@
       .replaceAll(">", "&gt;");
   }
 
+  function escapeAttribute(value) {
+    return escapeHtml(value).replaceAll('"', "&quot;");
+  }
+
+  function clearAttachment() {
+    if (pendingAttachment && pendingAttachment.previewUrl) {
+      URL.revokeObjectURL(pendingAttachment.previewUrl);
+    }
+    pendingAttachment = null;
+    if (imageInput) imageInput.value = "";
+    if (attachmentPreview) attachmentPreview.classList.add("hidden");
+    if (attachmentImage) attachmentImage.removeAttribute("src");
+    if (attachmentName) attachmentName.textContent = "";
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("No se pudo leer la imagen."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function setPendingAttachment(file) {
+    if (!file) return;
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      throw new Error("Solo se permiten imagenes JPG, PNG o WEBP.");
+    }
+    const dataUrl = await readFileAsDataUrl(file);
+    clearAttachment();
+    pendingAttachment = {
+      originalName: file.name || "imagen",
+      mimeType: file.type,
+      contentBase64: dataUrl,
+      previewUrl: URL.createObjectURL(file),
+    };
+    if (attachmentImage) attachmentImage.src = pendingAttachment.previewUrl;
+    if (attachmentName) attachmentName.textContent = pendingAttachment.originalName;
+    if (attachmentPreview) attachmentPreview.classList.remove("hidden");
+  }
+
+  async function handleClipboardPaste(event) {
+    const items = Array.from((event.clipboardData && event.clipboardData.items) || []);
+    const imageItem = items.find((item) => item.type && item.type.startsWith("image/"));
+    if (!imageItem) return;
+    event.preventDefault();
+    try {
+      const file = imageItem.getAsFile();
+      await setPendingAttachment(file);
+      chatStatus.textContent = "Imagen lista para enviar.";
+    } catch (error) {
+      chatStatus.textContent = error.message;
+    }
+  }
+
   async function loadConversation(contactId) {
     if (!contactId) {
       renderMessages([]);
@@ -93,6 +163,7 @@
       const configured = data.configured !== false;
       if (chatInput) chatInput.disabled = !configured;
       if (sendButton) sendButton.disabled = !configured;
+      if (attachButton) attachButton.disabled = !configured;
       if (selectedContactConfiguredInput) {
         selectedContactConfiguredInput.value = configured ? "true" : "false";
       }
@@ -126,6 +197,7 @@
   contactSelect.addEventListener("change", () => {
     const id = contactSelect.value;
     lastRenderedFingerprint = "";
+    clearAttachment();
     loadConversation(id);
     restartAutoRefresh();
   });
@@ -152,7 +224,7 @@
       chatStatus.textContent = "El contacto no esta configurado para este canal.";
       return;
     }
-    if (!message) return;
+    if (!message && !pendingAttachment) return;
 
     try {
       const response = await fetch("/api/chat/send", {
@@ -161,6 +233,13 @@
         body: JSON.stringify({
           contactId,
           message,
+          attachment: pendingAttachment
+            ? {
+                originalName: pendingAttachment.originalName,
+                mimeType: pendingAttachment.mimeType,
+                contentBase64: pendingAttachment.contentBase64,
+              }
+            : null,
           actor: internalActorModeInput ? internalActorModeInput.value : "user",
         }),
       });
@@ -169,6 +248,7 @@
         throw new Error(data.message || "No se pudo enviar el mensaje.");
       }
       chatInput.value = "";
+      clearAttachment();
       await loadConversation(contactId);
     } catch (error) {
       chatStatus.textContent = error.message;
@@ -210,6 +290,32 @@
         clearHistoryBtn.disabled = false;
       }
     });
+  }
+
+  if (attachButton && imageInput) {
+    attachButton.addEventListener("click", () => imageInput.click());
+    imageInput.addEventListener("change", async () => {
+      const file = imageInput.files && imageInput.files[0];
+      if (!file) return;
+      try {
+        await setPendingAttachment(file);
+        chatStatus.textContent = "Imagen lista para enviar.";
+      } catch (error) {
+        chatStatus.textContent = error.message;
+      }
+    });
+  }
+
+  if (attachmentClear) {
+    attachmentClear.addEventListener("click", clearAttachment);
+  }
+
+  if (chatInput) {
+    chatInput.addEventListener("paste", handleClipboardPaste);
+  }
+
+  if (chatWindow) {
+    chatWindow.addEventListener("paste", handleClipboardPaste);
   }
 
   if (contactSelect.value) {

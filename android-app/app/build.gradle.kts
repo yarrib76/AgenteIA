@@ -59,6 +59,7 @@ dependencies {
   implementation("com.squareup.retrofit2:converter-gson:2.11.0")
   implementation("com.squareup.okhttp3:okhttp:4.12.0")
   implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+  implementation("io.coil-kt:coil:2.7.0")
   implementation(platform("com.google.firebase:firebase-bom:33.2.0"))
   implementation("com.google.firebase:firebase-messaging")
   implementation("io.socket:socket.io-client:2.1.1") {

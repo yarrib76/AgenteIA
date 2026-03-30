@@ -2,6 +2,7 @@ const { randomUUID } = require("crypto");
 const { getRepositories } = require("../../repositories/repository-provider");
 const usersService = require("../auth/users.service");
 const internalChatGroupsService = require("./internal-chat-groups.service");
+const filesService = require("../file/files.service");
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -9,6 +10,7 @@ function normalizeText(value) {
 
 const SYSTEM_USER_ID = "__system__";
 const SYSTEM_USER_LABEL = "Sistema";
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function buildConversationId(a, b) {
   const ids = [normalizeText(a), normalizeText(b)].filter(Boolean).sort();
@@ -26,6 +28,76 @@ function normalizeIdList(input) {
       ? input.split(",")
       : [];
   return Array.from(new Set(source.map((item) => normalizeText(item)).filter(Boolean)));
+}
+
+function normalizeAttachment(row) {
+  const attachmentType = normalizeText(row && row.attachmentType);
+  const fileId = normalizeText(row && row.fileId);
+  const mimeType = normalizeText(row && row.attachmentMimeType);
+  const originalName = normalizeText(row && row.attachmentOriginalName);
+  const relativePath = normalizeText(row && row.attachmentRelativePath);
+  if (!attachmentType || !fileId || !relativePath) return null;
+  return {
+    type: attachmentType,
+    fileId,
+    mimeType,
+    originalName,
+    relativePath,
+    url: `/${relativePath.replace(/^\/+/, "")}`,
+  };
+}
+
+function summarizeMessage(text, attachment) {
+  const nextText = normalizeText(text);
+  if (attachment && nextText) return `[Imagen] ${nextText}`;
+  if (attachment) return "[Imagen]";
+  return nextText;
+}
+
+function validateImageMimeType(mimeType) {
+  const normalized = normalizeText(mimeType).toLowerCase();
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(normalized)) {
+    throw new Error("Tipo de imagen no soportado. Usa JPG, PNG o WEBP.");
+  }
+  return normalized;
+}
+
+async function resolveImageAttachment(attachmentInput) {
+  const input = attachmentInput && typeof attachmentInput === "object" ? attachmentInput : null;
+  if (!input) return null;
+
+  const fileId = normalizeText(input.fileId);
+  if (fileId) {
+    const file = await filesService.getFileById(fileId);
+    if (!file) throw new Error("Imagen no encontrada.");
+    validateImageMimeType(file.mimeType);
+    return {
+      type: "image",
+      fileId: file.id,
+      mimeType: file.mimeType,
+      originalName: file.originalName,
+      relativePath: file.relativePath,
+    };
+  }
+
+  const originalName = normalizeText(input.originalName);
+  const mimeType = validateImageMimeType(input.mimeType);
+  const contentBase64 = normalizeText(input.contentBase64);
+  if (!originalName || !contentBase64) {
+    throw new Error("Adjunto de imagen invalido.");
+  }
+  const stored = await filesService.uploadFile({
+    originalName,
+    mimeType,
+    contentBase64,
+  });
+  return {
+    type: "image",
+    fileId: stored.id,
+    mimeType: stored.mimeType,
+    originalName: stored.originalName,
+    relativePath: stored.relativePath,
+  };
 }
 
 function normalizeClearedAtByUser(value) {
@@ -72,6 +144,11 @@ function normalizeMessage(row) {
     senderName: normalizeText(row && row.senderName),
     recipientUserId,
     text: normalizeText(row && row.text),
+    attachmentType: normalizeText(row && row.attachmentType),
+    fileId: normalizeText(row && row.fileId),
+    attachmentOriginalName: normalizeText(row && row.attachmentOriginalName),
+    attachmentMimeType: normalizeText(row && row.attachmentMimeType),
+    attachmentRelativePath: normalizeText(row && row.attachmentRelativePath),
     direction: normalizeText(row && row.direction) || "out",
     status: normalizeText(row && row.status) || "sent",
     providerMessageId: normalizeText(row && row.providerMessageId),
@@ -182,12 +259,13 @@ async function ensureGroupConversation(groupId) {
   return nextConversation;
 }
 
-async function sendMessage({ senderUserId, recipientUserId, groupId, text, status = "sent" }) {
+async function sendMessage({ senderUserId, recipientUserId, groupId, text, attachment, status = "sent" }) {
   const nextSender = normalizeText(senderUserId);
   const nextRecipient = normalizeText(recipientUserId);
   const nextGroupId = normalizeText(groupId);
   const nextText = normalizeText(text);
-  if (!nextSender || !nextText) {
+  const nextAttachment = await resolveImageAttachment(attachment);
+  if (!nextSender || (!nextText && !nextAttachment)) {
     throw new Error("Mensaje interno invalido.");
   }
 
@@ -212,6 +290,11 @@ async function sendMessage({ senderUserId, recipientUserId, groupId, text, statu
       senderName,
       recipientUserId: "",
       text: nextText,
+      attachmentType: nextAttachment ? nextAttachment.type : "",
+      fileId: nextAttachment ? nextAttachment.fileId : "",
+      attachmentOriginalName: nextAttachment ? nextAttachment.originalName : "",
+      attachmentMimeType: nextAttachment ? nextAttachment.mimeType : "",
+      attachmentRelativePath: nextAttachment ? nextAttachment.relativePath : "",
       status,
       createdAt: now,
       timestamp: now,
@@ -232,6 +315,11 @@ async function sendMessage({ senderUserId, recipientUserId, groupId, text, statu
       senderName,
       recipientUserId: nextRecipient,
       text: nextText,
+      attachmentType: nextAttachment ? nextAttachment.type : "",
+      fileId: nextAttachment ? nextAttachment.fileId : "",
+      attachmentOriginalName: nextAttachment ? nextAttachment.originalName : "",
+      attachmentMimeType: nextAttachment ? nextAttachment.mimeType : "",
+      attachmentRelativePath: nextAttachment ? nextAttachment.relativePath : "",
       status,
       createdAt: now,
       timestamp: now,
@@ -259,13 +347,14 @@ async function sendMessage({ senderUserId, recipientUserId, groupId, text, statu
       participantUserIds,
       updatedAt: now,
       lastMessageAt: now,
-      lastMessageText: nextText,
+      lastMessageText: summarizeMessage(nextText, nextAttachment),
       clearedAtByUser: nextClearedAtByUser,
     };
   });
   await saveConversations(updated);
   return {
     ...message,
+    attachment: normalizeAttachment(message),
     participantUserIds,
   };
 }
@@ -281,12 +370,17 @@ async function listConversationMessages(conversationId, userId = "") {
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
     .map((row) => {
       if (normalizeText(row.senderName)) return row;
+      const base = {
+        ...row,
+        attachment: normalizeAttachment(row),
+      };
+      if (normalizeText(row.senderName)) return base;
       if (row.senderUserId === SYSTEM_USER_ID) {
-        return { ...row, senderName: SYSTEM_USER_LABEL };
+        return { ...base, senderName: SYSTEM_USER_LABEL };
       }
       const sender = users.find((user) => user.id === row.senderUserId);
       return {
-        ...row,
+        ...base,
         senderName: sender ? (normalizeText(sender.name) || normalizeText(sender.email) || row.senderUserId) : row.senderUserId,
       };
     });
@@ -318,7 +412,7 @@ async function listConversationsForUser(userId) {
           counterpartEmail: group ? group.name : row.name || "Grupo interno",
           unreadCount,
           lastMessageAt: lastVisible ? lastVisible.timestamp : null,
-          lastMessageText: lastVisible ? lastVisible.text : "",
+          lastMessageText: lastVisible ? summarizeMessage(lastVisible.text, normalizeAttachment(lastVisible)) : "",
         };
       }
 
@@ -333,7 +427,7 @@ async function listConversationsForUser(userId) {
             : (counterpart ? counterpart.email : counterpartUserId),
         unreadCount,
         lastMessageAt: lastVisible ? lastVisible.timestamp : null,
-        lastMessageText: lastVisible ? lastVisible.text : "",
+        lastMessageText: lastVisible ? summarizeMessage(lastVisible.text, normalizeAttachment(lastVisible)) : "",
       };
     })
     .sort((a, b) => new Date(b.lastMessageAt || b.updatedAt) - new Date(a.lastMessageAt || a.updatedAt));

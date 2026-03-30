@@ -24,6 +24,20 @@
       android:textSize="12sp"
       android:textStyle="bold" />
 
+    <ImageView
+      android:id="@+id/messageImage"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="4dp"
+      android:layout_marginBottom="6dp"
+      android:adjustViewBounds="true"
+      android:maxWidth="260dp"
+      android:maxHeight="240dp"
+      android:background="#FFFFFF"
+      android:contentDescription="imagen"
+      android:scaleType="centerCrop"
+      android:visibility="gone" />
+
     <TextView
       android:id="@+id/messageText"
       android:layout_width="wrap_content"
@@ -42,3 +56,4 @@
   </LinearLayout>
 
 </LinearLayout>
+

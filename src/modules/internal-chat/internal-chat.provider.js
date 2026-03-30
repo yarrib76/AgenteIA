@@ -18,6 +18,7 @@ function buildInternalChatProvider() {
       senderName: message.senderName || "",
       recipientUserId: message.recipientUserId,
       text: message.text,
+      attachment: message.attachment || null,
       timestamp: message.timestamp,
       readAt: message.readAt || null,
     };
@@ -42,6 +43,7 @@ function buildInternalChatProvider() {
           senderUserId,
           groupId: resolved.group.id,
           text,
+          attachment: options.attachment || null,
           status: "sent",
         });
         pushTargets = (message.participantUserIds || []).filter((userId) => userId && userId !== senderUserId);
@@ -51,6 +53,7 @@ function buildInternalChatProvider() {
           senderUserId,
           recipientUserId: resolved.user.id,
           text,
+          attachment: options.attachment || null,
           status: "sent",
         });
         pushTargets = [resolved.user.id];
@@ -63,7 +66,7 @@ function buildInternalChatProvider() {
       for (const userId of pushTargets) {
         await internalChatPushService.sendPushToUser(userId, {
           title: senderUserId === internalChatService.SYSTEM_USER_ID ? "Robot IA" : "Nuevo mensaje interno",
-          body: text,
+          body: String(text || "").trim() || "Te envio una imagen.",
           conversationId: message.conversationId,
           counterpartEmail,
         });
@@ -72,6 +75,7 @@ function buildInternalChatProvider() {
         chatId: message.conversationId,
         contactKey: resolved.type === "group" ? `group:${resolved.group.id}` : resolved.user.id,
         messageId: message.id,
+        message,
       };
     },
     isReady: async () => true,

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -45,6 +46,7 @@ class LoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
+        WindowInsetsHelper.applySystemBarsPadding(findViewById<View>(R.id.loginRoot), includeImeBottom = true)
 
         sessionStore = SessionStore(this)
         settingsStore = ServerSettingsStore(this)

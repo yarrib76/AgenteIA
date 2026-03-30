@@ -54,7 +54,12 @@
         <% if (activeChannel === 'internal_chat' && msg.direction !== 'out' && msg.conversationType === 'group' && msg.senderName) { %>
         <div class="meta"><strong><%= msg.senderName %></strong></div>
         <% } %>
-        <%= msg.text %>
+        <% if (msg.attachment && msg.attachment.type === 'image' && msg.attachment.url) { %>
+        <img class="chat-image" src="<%= msg.attachment.url %>" alt="<%= msg.attachment.originalName || 'imagen' %>" />
+        <% } %>
+        <% if (msg.text) { %>
+        <div><%= msg.text %></div>
+        <% } %>
       </div>
       <span class="meta"><%= msg.timestampFormatted || msg.timestamp %></span>
     </div>
@@ -66,7 +71,24 @@
     <input type="hidden" id="activeChannel" value="<%= activeChannel %>" />
     <input type="hidden" id="internalActorMode" value="<%= internalActorMode || 'user' %>" />
     <input type="hidden" id="selectedContactConfigured" value="<%= selectedContactConfigured ? 'true' : 'false' %>" />
-    <input type="text" id="chatInput" maxlength="2000" placeholder="Escribe un mensaje..." required <%= selectedContactConfigured ? "" : "disabled" %> />
-    <button class="primary-button" type="submit" <%= selectedContactConfigured ? "" : "disabled" %>>Enviar</button>
+    <div class="chat-input-stack">
+      <% if (activeChannel === "internal_chat") { %>
+      <div id="chatAttachmentPreview" class="chat-attachment-preview hidden">
+        <img id="chatAttachmentImage" class="chat-attachment-image" alt="preview" />
+        <div class="chat-attachment-meta">
+          <strong id="chatAttachmentName"></strong>
+          <button id="chatAttachmentClear" class="secondary-button" type="button">Quitar</button>
+        </div>
+      </div>
+      <% } %>
+      <div class="chat-form-row <%= activeChannel === 'internal_chat' ? '' : 'no-attachment' %>">
+        <% if (activeChannel === "internal_chat") { %>
+        <input type="file" id="chatImageInput" accept="image/png,image/jpeg,image/webp" class="hidden" />
+        <button id="chatAttachBtn" class="secondary-button" type="button" <%= selectedContactConfigured ? "" : "disabled" %>>Imagen</button>
+        <% } %>
+        <input type="text" id="chatInput" maxlength="2000" placeholder="Escribe un mensaje..." <%= selectedContactConfigured ? "" : "disabled" %> />
+        <button class="primary-button" type="submit" <%= selectedContactConfigured ? "" : "disabled" %>>Enviar</button>
+      </div>
+    </div>
   </form>
 </div>

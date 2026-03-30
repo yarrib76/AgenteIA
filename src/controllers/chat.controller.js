@@ -46,6 +46,15 @@ function resolveInternalActor(req) {
   };
 }
 
+function hasAttachment(value) {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && (String(value.fileId || "").trim()
+      || (String(value.originalName || "").trim() && String(value.contentBase64 || "").trim()))
+  );
+}
+
 async function buildInternalTargets(currentUserId, actorMode = "user") {
   const [users, groups] = await Promise.all([
     usersService.listUsers(),
@@ -247,7 +256,10 @@ async function sendMessage(req, res) {
         return res.status(404).json({ ok: false, message: "Destino no encontrado." });
       }
       const text = String(req.body.message || "").trim();
-      if (!text) {
+      const attachment = req.body.attachment && typeof req.body.attachment === "object"
+        ? req.body.attachment
+        : null;
+      if (!text && !hasAttachment(attachment)) {
         return res.status(400).json({ ok: false, message: "Escribe un mensaje." });
       }
       if (parsed.type === "group") {
@@ -258,15 +270,21 @@ async function sendMessage(req, res) {
         const result = await messagingGateway.sendMessage(`group:${group.id}`, text, {
           channel: "internal_chat",
           senderUserId: actor.userId,
+          attachment,
         });
         return res.status(201).json({
           ok: true,
-          message: {
-            id: result.messageId,
-            direction: "out",
-            text,
-            timestamp: new Date().toISOString(),
-          },
+          message: result.message
+            ? {
+                ...result.message,
+                direction: "out",
+              }
+            : {
+                id: result.messageId,
+                direction: "out",
+                text,
+                timestamp: new Date().toISOString(),
+              },
           activeChannel,
         });
       }
@@ -277,15 +295,21 @@ async function sendMessage(req, res) {
       const result = await messagingGateway.sendMessage(recipient.id, text, {
         channel: "internal_chat",
         senderUserId: actor.userId,
+        attachment,
       });
       return res.status(201).json({
         ok: true,
-        message: {
-          id: result.messageId,
-          direction: "out",
-          text,
-          timestamp: new Date().toISOString(),
-        },
+        message: result.message
+          ? {
+              ...result.message,
+              direction: "out",
+            }
+          : {
+              id: result.messageId,
+              direction: "out",
+              text,
+              timestamp: new Date().toISOString(),
+            },
         activeChannel,
       });
     }

@@ -284,6 +284,10 @@ body {
   word-break: break-word;
 }
 
+.bubble > div + div {
+  margin-top: 8px;
+}
+
 .message.out .bubble {
   background: #dcfce7;
 }
@@ -296,15 +300,60 @@ body {
 
 .chat-form {
   margin-top: 12px;
+}
+
+.chat-input-stack {
   display: grid;
-  grid-template-columns: 1fr auto;
   gap: 10px;
+}
+
+.chat-form-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+}
+
+.chat-form-row.no-attachment {
+  grid-template-columns: 1fr auto;
 }
 
 .chat-form input {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
+}
+
+.chat-image {
+  display: block;
+  max-width: min(320px, 100%);
+  max-height: 260px;
+  border-radius: 10px;
+  border: 1px solid #d7dee7;
+  background: #fff;
+}
+
+.chat-attachment-preview {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.chat-attachment-image {
+  width: 82px;
+  height: 82px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #d7dee7;
+}
+
+.chat-attachment-meta {
+  display: grid;
+  gap: 8px;
 }
 
 .secondary-button {

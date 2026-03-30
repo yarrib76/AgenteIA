@@ -13,6 +13,7 @@ app.set("views", path.join(__dirname, "..", "views"));
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "..", "public")));
+app.use("/archivos", express.static(path.join(process.cwd(), "archivos")));
 app.use(authService.attachAuth);
 
 app.use("/", routes);

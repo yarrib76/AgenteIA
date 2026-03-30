@@ -36,4 +36,8 @@
   <string name="delete_chat_title">Borrar chat</string>
   <string name="delete_chat_message">Se limpiará este chat solo para vos: %1$s</string>
   <string name="conversations_header">Chats</string>
+  <string name="remove_image">Quitar imagen</string>
+  <string name="image_type_not_supported">Solo se permiten imágenes JPG, PNG o WEBP.</string>
+  <string name="image_read_failed">No se pudo leer la imagen.</string>
 </resources>
+

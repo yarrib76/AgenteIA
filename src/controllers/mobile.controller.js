@@ -9,9 +9,19 @@ function sanitizeUser(user) {
   return user
     ? {
         id: user.id,
+        name: user.name || "",
         email: user.email,
       }
     : null;
+}
+
+function hasAttachment(value) {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && (String(value.fileId || "").trim()
+      || (String(value.originalName || "").trim() && String(value.contentBase64 || "").trim()))
+  );
 }
 
 async function login(req, res) {
@@ -82,7 +92,10 @@ async function sendConversationMessage(req, res) {
       return res.status(404).json({ ok: false, message: "Conversacion no encontrada." });
     }
     const text = String(req.body.text || "").trim();
-    if (!text) {
+    const attachment = req.body.attachment && typeof req.body.attachment === "object"
+      ? req.body.attachment
+      : null;
+    if (!text && !hasAttachment(attachment)) {
       return res.status(400).json({ ok: false, message: "Escribe un mensaje." });
     }
 
@@ -95,6 +108,7 @@ async function sendConversationMessage(req, res) {
         senderUserId: req.mobileUser.id,
         groupId: conversation.groupId,
         text,
+        attachment,
         status: "sent",
       });
       pushTargets = (message.participantUserIds || []).filter((id) => id !== req.mobileUser.id);
@@ -105,6 +119,7 @@ async function sendConversationMessage(req, res) {
         senderUserId: req.mobileUser.id,
         recipientUserId,
         text,
+        attachment,
         status: "sent",
       });
       pushTargets = [recipientUserId];
@@ -113,7 +128,7 @@ async function sendConversationMessage(req, res) {
     for (const userId of pushTargets) {
       await internalChatPushService.sendPushToUser(userId, {
         title: req.mobileUser.email || "Nuevo mensaje interno",
-        body: text,
+        body: text || "Te envio una imagen.",
         conversationId: message.conversationId,
         counterpartEmail,
       });
@@ -122,7 +137,7 @@ async function sendConversationMessage(req, res) {
     await routeTaskReplyIfNeeded({
       channel: "internal_chat",
       sourceTarget: req.mobileUser.id,
-      text,
+      text: text || "[Imagen]",
       quotedMessageId: "",
       isGroup: conversation.type === "group",
       groupName: conversation.type === "group" ? (conversation.name || "") : "",

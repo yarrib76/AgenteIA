@@ -4,11 +4,14 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import coil.load
 import com.agenteia.internalchat.R
 import com.agenteia.internalchat.data.MessageDto
+import com.agenteia.internalchat.network.ApiClient
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -48,6 +51,7 @@ class MessagesAdapter(
         private val bubble: LinearLayout = itemView.findViewById(R.id.messageBubble)
         private val sender: TextView = itemView.findViewById(R.id.messageSender)
         private val messageText: TextView = itemView.findViewById(R.id.messageText)
+        private val messageImage: ImageView = itemView.findViewById(R.id.messageImage)
         private val messageMeta: TextView = itemView.findViewById(R.id.messageMeta)
 
         fun bind(item: MessageDto, currentUserId: String) {
@@ -62,7 +66,26 @@ class MessagesAdapter(
                 item.senderName.isNotBlank() -> item.senderName
                 else -> itemView.context.getString(R.string.message_received)
             }
-            messageText.text = item.text
+
+            val attachment = item.attachment
+            if (attachment != null && attachment.type == "image" && attachment.url.isNotBlank()) {
+                messageImage.visibility = View.VISIBLE
+                messageImage.load(ApiClient.resolveUrl(itemView.context, attachment.url)) {
+                    crossfade(true)
+                }
+            } else {
+                messageImage.visibility = View.GONE
+                messageImage.setImageDrawable(null)
+            }
+
+            if (item.text.isBlank()) {
+                messageText.visibility = View.GONE
+                messageText.text = ""
+            } else {
+                messageText.visibility = View.VISIBLE
+                messageText.text = item.text
+            }
+
             val time = runCatching { timeFormatter.format(Instant.parse(item.timestamp)) }.getOrDefault("")
             messageMeta.text = if (isOutgoing) "$time  •  ${itemView.context.getString(R.string.you_label)}" else time
             itemView.setOnLongClickListener {
@@ -72,3 +95,4 @@ class MessagesAdapter(
         }
     }
 }
+

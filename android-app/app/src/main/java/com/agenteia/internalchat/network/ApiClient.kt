@@ -1,6 +1,7 @@
 package com.agenteia.internalchat.network
 
 import android.content.Context
+import com.agenteia.internalchat.data.MessageAttachmentDto
 import com.agenteia.internalchat.data.RealtimeMessageEvent
 import com.agenteia.internalchat.data.ServerSettingsStore
 import io.socket.client.IO
@@ -36,6 +37,14 @@ object ApiClient {
         val baseUrl = ServerSettingsStore(context.applicationContext).getBackendBaseUrl()
         return build(baseUrl)
     }
+
+    fun resolveUrl(context: Context, value: String): String {
+        val raw = value.trim()
+        if (raw.isBlank()) return ""
+        if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
+        val baseUrl = ServerSettingsStore(context.applicationContext).getBackendBaseUrl().removeSuffix("/")
+        return "$baseUrl/${raw.trimStart('/')}"
+    }
 }
 
 class InternalChatSocketClient(private val context: Context) {
@@ -55,6 +64,17 @@ class InternalChatSocketClient(private val context: Context) {
         }
         socket?.on("internal-chat-message") { args ->
             val raw = args.firstOrNull() as? JSONObject ?: return@on
+            val attachmentRaw = raw.optJSONObject("attachment")
+            val attachment = attachmentRaw?.let {
+                MessageAttachmentDto(
+                    type = it.optString("type"),
+                    fileId = it.optString("fileId"),
+                    mimeType = it.optString("mimeType"),
+                    originalName = it.optString("originalName"),
+                    relativePath = it.optString("relativePath"),
+                    url = it.optString("url"),
+                )
+            }
             val event = RealtimeMessageEvent(
                 messageId = raw.optString("messageId"),
                 conversationId = raw.optString("conversationId"),
@@ -65,6 +85,7 @@ class InternalChatSocketClient(private val context: Context) {
                 timestamp = raw.optString("timestamp"),
                 conversationType = raw.optString("conversationType").ifBlank { "direct" },
                 readAt = raw.optString("readAt").ifBlank { null },
+                attachment = attachment,
             )
             onMessage(event)
         }
@@ -77,3 +98,4 @@ class InternalChatSocketClient(private val context: Context) {
         socket = null
     }
 }
+

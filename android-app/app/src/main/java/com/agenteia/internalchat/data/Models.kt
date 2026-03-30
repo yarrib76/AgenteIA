@@ -8,6 +8,7 @@ data class LoginRequest(
 
 data class UserDto(
     val id: String,
+    val name: String = "",
     val email: String
 )
 
@@ -41,6 +42,15 @@ data class ConversationsResponse(
     val message: String? = null
 )
 
+data class MessageAttachmentDto(
+    val type: String,
+    val fileId: String,
+    val mimeType: String = "",
+    val originalName: String = "",
+    val relativePath: String = "",
+    val url: String = ""
+)
+
 data class MessageDto(
     val id: String,
     val conversationId: String,
@@ -50,7 +60,8 @@ data class MessageDto(
     val text: String,
     val timestamp: String,
     val conversationType: String = "direct",
-    val readAt: String? = null
+    val readAt: String? = null,
+    val attachment: MessageAttachmentDto? = null
 )
 
 data class MessagesResponse(
@@ -60,8 +71,15 @@ data class MessagesResponse(
     val message: String? = null
 )
 
+data class UploadImageAttachmentRequest(
+    val originalName: String,
+    val mimeType: String,
+    val contentBase64: String
+)
+
 data class SendMessageRequest(
-    val text: String
+    val text: String,
+    val attachment: UploadImageAttachmentRequest? = null
 )
 
 data class SendMessageResponse(
@@ -91,5 +109,7 @@ data class RealtimeMessageEvent(
     val text: String,
     val timestamp: String,
     val conversationType: String = "direct",
-    val readAt: String? = null
+    val readAt: String? = null,
+    val attachment: MessageAttachmentDto? = null
 )
+
