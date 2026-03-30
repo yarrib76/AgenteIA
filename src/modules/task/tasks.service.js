@@ -473,6 +473,7 @@ function buildInternalTargetsReferenceText(users, groups, responseContactId = ""
   const compactUsers = (Array.isArray(users) ? users : []).slice(0, 200).map((u) => ({
     contactId: "user:" + u.id,
     type: "user",
+    name: u.name || "",
     email: u.email,
   }));
   const compactGroups = (Array.isArray(groups) ? groups : []).slice(0, 200).map((g) => ({
@@ -1317,6 +1318,183 @@ function findMatchingContactIdsForVendorName(contacts, vendorName) {
     .map((contact) => contact.id);
 }
 
+function findMatchingUserIdsForVendorName(users, vendorName) {
+  const vendorKey = normalizeCompareText(vendorName);
+  if (!vendorKey) return [];
+  const rows = Array.isArray(users) ? users : [];
+  return rows
+    .filter((user) => {
+      const nameKey = normalizeCompareText(user && user.name);
+      const emailKey = normalizeCompareText(String(user && user.email || "").split("@")[0]);
+      return Boolean(
+        (nameKey && (nameKey === vendorKey || nameKey.includes(vendorKey) || vendorKey.includes(nameKey)))
+        || (emailKey && (emailKey === vendorKey || emailKey.includes(vendorKey) || vendorKey.includes(emailKey)))
+      );
+    })
+    .map((user) => user.id);
+}
+
+function buildAllowedInternalUserIdsByVendorNames(users, vendorNameKeys) {
+  const allowed = new Set();
+  if (!vendorNameKeys || vendorNameKeys.size === 0) return allowed;
+  const rows = Array.isArray(users) ? users : [];
+  for (const user of rows) {
+    const nameKey = normalizeCompareText(user && user.name);
+    const emailKey = normalizeCompareText(String(user && user.email || "").split("@")[0]);
+    for (const vendorKey of vendorNameKeys) {
+      if (
+        (nameKey && (nameKey === vendorKey || nameKey.includes(vendorKey) || vendorKey.includes(nameKey)))
+        || (emailKey && (emailKey === vendorKey || emailKey.includes(vendorKey) || vendorKey.includes(emailKey)))
+      ) {
+        allowed.add(user.id);
+        break;
+      }
+    }
+  }
+  return allowed;
+}
+
+function buildPendingPaymentsRequirementsForInternalUsers(apiRows, users) {
+  const requirementsByUserId = new Map();
+  const unresolvedVendors = [];
+  const groupedByVendor = new Map();
+
+  for (const row of Array.isArray(apiRows) ? apiRows : []) {
+    const classification = classifyPendingPaymentsRow(row);
+    if (classification === "none") continue;
+    const vendorName = normalizeText(row && row.vendedora);
+    const vendorKey = normalizeCompareText(vendorName);
+    if (!vendorKey) continue;
+    if (!groupedByVendor.has(vendorKey)) {
+      groupedByVendor.set(vendorKey, { vendorName, overdueRows: [], missingNoteRows: [] });
+    }
+    const bucket = groupedByVendor.get(vendorKey);
+    if (classification === "overdue") bucket.overdueRows.push(row);
+    if (classification === "missing_note") bucket.missingNoteRows.push(row);
+  }
+
+  for (const bucket of groupedByVendor.values()) {
+    const matches = findMatchingUserIdsForVendorName(users, bucket.vendorName);
+    if (matches.length === 0) {
+      unresolvedVendors.push({
+        vendorName: bucket.vendorName,
+        orders: [...bucket.overdueRows, ...bucket.missingNoteRows].map((row) => row && row.numero_pedido).filter((value) => value != null),
+      });
+      continue;
+    }
+    for (const userId of matches) {
+      const user = users.find((item) => item.id === userId);
+      if (!user) continue;
+      requirementsByUserId.set(userId, {
+        user,
+        overdueRows: bucket.overdueRows.slice(),
+        missingNoteRows: bucket.missingNoteRows.slice(),
+      });
+    }
+  }
+
+  return { requirementsByUserId, unresolvedVendors };
+}
+
+async function applyPendingPaymentsConsistencyForInternalChat({ actions, apiRows, users }) {
+  const warnings = [];
+  const validActions = [];
+  const coveredKinds = new Set();
+  const { requirementsByUserId, unresolvedVendors } = buildPendingPaymentsRequirementsForInternalUsers(apiRows, users);
+
+  for (const unresolved of unresolvedVendors) {
+    warnings.push({
+      code: "required_vendor_without_resolvable_internal_user",
+      vendorName: unresolved.vendorName,
+      orders: unresolved.orders,
+    });
+  }
+
+  for (let i = 0; i < actions.length; i += 1) {
+    const action = actions[i] || {};
+    const type = normalizeText(action.type).toLowerCase();
+    if (normalizeActionType(type) !== "send_message") {
+      validActions.push(action);
+      continue;
+    }
+    const contactId = normalizeText(action.contactId);
+    if (!contactId.startsWith("user:")) {
+      warnings.push({ code: "pending_payments_internal_non_user_skipped", actionIndex: i, contactId: contactId || null });
+      continue;
+    }
+    const userId = contactId.slice(5);
+    const evidenceRows = normalizeEvidenceRows(action, apiRows);
+    if (evidenceRows.length === 0) {
+      warnings.push({ code: "pending_payments_action_without_matching_rows_skipped", actionIndex: i, contactId: contactId || null });
+      continue;
+    }
+
+    const classifications = new Set(evidenceRows.map((row) => classifyPendingPaymentsRow(row)));
+    classifications.delete("none");
+    if (classifications.size !== 1) {
+      warnings.push({ code: "pending_payments_mixed_or_invalid_rows_skipped", actionIndex: i, contactId: contactId || null, orders: evidenceRows.map((row) => row.numero_pedido) });
+      continue;
+    }
+
+    const kind = Array.from(classifications)[0];
+    if (!kind) {
+      warnings.push({ code: "pending_payments_non_actionable_rows_skipped", actionIndex: i, contactId: contactId || null, orders: evidenceRows.map((row) => row.numero_pedido) });
+      continue;
+    }
+
+    const requirement = requirementsByUserId.get(userId);
+    if (!requirement) {
+      warnings.push({ code: "pending_payments_internal_user_without_requirement_skipped", actionIndex: i, contactId: contactId || null, orders: evidenceRows.map((row) => row.numero_pedido) });
+      continue;
+    }
+
+    const vendorOrders = (kind === "overdue" ? requirement.overdueRows : requirement.missingNoteRows).map((row) => Number(row.numero_pedido));
+    const evidenceOrders = evidenceRows.map((row) => Number(row.numero_pedido));
+    const allOrdersMatch = evidenceOrders.every((order) => vendorOrders.includes(order));
+    if (!allOrdersMatch) {
+      warnings.push({ code: "pending_payments_evidence_not_allowed_for_internal_user_skipped", actionIndex: i, contactId: contactId || null, orders: evidenceOrders });
+      continue;
+    }
+
+    const expectedMessage = kind === "overdue"
+      ? buildOverdueReminderMessage(requirement.user.name || requirement.user.email, requirement.overdueRows)
+      : buildMissingPaymentNoteMessage(requirement.user.name || requirement.user.email, requirement.missingNoteRows);
+
+    coveredKinds.add(kind + ":" + userId);
+    validActions.push({
+      ...action,
+      contactId: "user:" + userId,
+      contact: normalizeText(action.contact) || requirement.user.name || requirement.user.email,
+      message: expectedMessage,
+    });
+  }
+
+  for (const [userId, requirement] of requirementsByUserId.entries()) {
+    if (requirement.overdueRows.length > 0 && !coveredKinds.has("overdue:" + userId)) {
+      validActions.push({
+        type: "send_message",
+        contactId: "user:" + userId,
+        contact: requirement.user.name || requirement.user.email,
+        message: buildOverdueReminderMessage(requirement.user.name || requirement.user.email, requirement.overdueRows),
+        evidence: { source: "backend_pending_payments_consistency", reason: "Autocorrección: faltaba accion para pedidos vencidos.", rows: requirement.overdueRows.map((row) => ({ numero_pedido: row.numero_pedido, vendedora: row.vendedora, vencida: row.vencida, notas_presentes: hasAnyNotes(row.notas) })) },
+      });
+      warnings.push({ code: "overdue_missing_action_autocorrected", contactId: "user:" + userId, contactName: requirement.user.name || requirement.user.email, orders: requirement.overdueRows.map((row) => row.numero_pedido) });
+    }
+    if (requirement.missingNoteRows.length > 0 && !coveredKinds.has("missing_note:" + userId)) {
+      validActions.push({
+        type: "send_message",
+        contactId: "user:" + userId,
+        contact: requirement.user.name || requirement.user.email,
+        message: buildMissingPaymentNoteMessage(requirement.user.name || requirement.user.email, requirement.missingNoteRows),
+        evidence: { source: "backend_pending_payments_consistency", reason: "Autocorrección: faltaba accion para pedidos sin nota de reclamo.", rows: requirement.missingNoteRows.map((row) => ({ numero_pedido: row.numero_pedido, vendedora: row.vendedora, vencida: row.vencida, notas_presentes: hasAnyNotes(row.notas) })) },
+      });
+      warnings.push({ code: "missing_note_action_autocorrected", contactId: "user:" + userId, contactName: requirement.user.name || requirement.user.email, orders: requirement.missingNoteRows.map((row) => row.numero_pedido) });
+    }
+  }
+
+  return { actions: validActions, warnings };
+}
+
 function collectEvidenceWarnings(actions, apiRows, contacts) {
   const warnings = [];
   const normalizedActions = Array.isArray(actions) ? actions : [];
@@ -1605,7 +1783,10 @@ async function applyGlobalGuardrails({
     const warnings = [];
     const allowedInternalGroupIds = new Set(normalizeIdList(task && task.allowedGroupContactIds));
     const sourceActions = Array.isArray(parsed && parsed.actions) ? parsed.actions : [];
+    const apiRows = collectRowsFromApiResults(apiResults);
+    const availableUsers = await usersService.listUsers();
     const keptActions = [];
+
     for (let i = 0; i < sourceActions.length; i += 1) {
       const action = sourceActions[i] || {};
       const type = normalizeText(action.type).toLowerCase();
@@ -1613,6 +1794,7 @@ async function applyGlobalGuardrails({
         keptActions.push(action);
         continue;
       }
+
       const fallbackTarget = allowedInternalGroupIds.size === 1
         ? "group:" + Array.from(allowedInternalGroupIds)[0]
         : "";
@@ -1624,28 +1806,65 @@ async function applyGlobalGuardrails({
         });
         continue;
       }
-      if (resolvedTarget.type === "group" && !allowedInternalGroupIds.has(resolvedTarget.id)) {
-        warnings.push({
-          code: "internal_group_not_allowed_skipped",
-          actionIndex: i,
-          contactId: resolvedTarget.storageId,
-        });
-        continue;
+
+      if (resolvedTarget.type === "group") {
+        if (!allowedInternalGroupIds.has(resolvedTarget.id)) {
+          warnings.push({
+            code: "internal_group_not_allowed_skipped",
+            actionIndex: i,
+            contactId: resolvedTarget.storageId,
+          });
+          continue;
+        }
+      } else {
+        const evidenceRows = normalizeEvidenceRows(action, apiRows);
+        if (evidenceRows.length > 0) {
+          const vendorKeysForAction = new Set(
+            evidenceRows.map((row) => normalizeCompareText(row && row.vendedora)).filter(Boolean)
+          );
+          if (vendorKeysForAction.size > 0) {
+            const actionAllowedUserIds = buildAllowedInternalUserIdsByVendorNames(availableUsers, vendorKeysForAction);
+            if (!actionAllowedUserIds.has(resolvedTarget.id)) {
+              warnings.push({
+                code: "internal_user_vendor_mismatch_skipped",
+                actionIndex: i,
+                contactId: resolvedTarget.storageId,
+                expectedVendors: Array.from(vendorKeysForAction),
+              });
+              continue;
+            }
+          }
+        }
       }
+
       keptActions.push({
         ...action,
         contactId: resolvedTarget.storageId,
         contact: normalizeText(action.contact) || resolvedTarget.name,
       });
     }
+
+    let finalActions = keptActions;
+    warnings.push(...collectEvidenceWarnings(keptActions, apiRows, availableContacts));
+    if (isPendingPaymentsTask(task)) {
+      const consistency = await applyPendingPaymentsConsistencyForInternalChat({
+        actions: keptActions,
+        apiRows,
+        users: availableUsers,
+      });
+      finalActions = consistency.actions;
+      warnings.push(...consistency.warnings);
+    }
+
     return {
       parsed: {
         ...(parsed || {}),
-        actions: keptActions,
+        actions: finalActions,
       },
       warnings,
     };
   }
+
   const warnings = [];
   const contacts = Array.isArray(availableContacts) ? availableContacts : [];
   const allowedGroupContactIds = new Set(normalizeIdList(task && task.allowedGroupContactIds));
