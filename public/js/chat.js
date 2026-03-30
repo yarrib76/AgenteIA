@@ -28,9 +28,33 @@
     return "?actor=" + encodeURIComponent(internalActorModeInput.value);
   }
 
+  function normalizeImageAttachment(msg) {
+    if (msg && msg.attachment && msg.attachment.type === "image" && msg.attachment.url) {
+      return msg.attachment;
+    }
+    if (
+      msg
+      && msg.attachmentType === "image"
+      && String(msg.fileId || "").trim()
+      && String(msg.attachmentRelativePath || "").trim()
+    ) {
+      return {
+        type: "image",
+        fileId: msg.fileId,
+        originalName: msg.attachmentOriginalName || "imagen",
+        url: "/" + String(msg.attachmentRelativePath || "").replace(/^\/+/, ""),
+        fallbackUrl: "/files/content/" + msg.fileId,
+      };
+    }
+    return null;
+  }
+
   function renderMessages(messages) {
     const fingerprint = JSON.stringify(
-      (messages || []).map((m) => [m.id, m.timestamp, m.text, m.direction, m.senderName, m.conversationType, m.attachment && m.attachment.url])
+      (messages || []).map((m) => {
+        const attachment = normalizeImageAttachment(m);
+        return [m.id, m.timestamp, m.text, m.direction, m.senderName, m.conversationType, attachment && attachment.url];
+      })
     );
     if (fingerprint === lastRenderedFingerprint) {
       return;
@@ -53,8 +77,9 @@
         const senderHtml = showSender
           ? `<div class="meta"><strong>${escapeHtml(msg.senderName)}</strong></div>`
           : "";
-        const imageHtml = msg.attachment && msg.attachment.type === "image" && msg.attachment.url
-          ? `<img class="chat-image" src="${escapeAttribute(msg.attachment.url)}" data-fallback-src="${escapeAttribute(msg.attachment.fallbackUrl || "")}" onerror="if(this.dataset.fallbackSrc && this.src.indexOf(this.dataset.fallbackSrc)===-1){this.src=this.dataset.fallbackSrc;}else{this.style.display='none';}" alt="${escapeAttribute(msg.attachment.originalName || "imagen")}" />`
+        const attachment = normalizeImageAttachment(msg);
+        const imageHtml = attachment && attachment.url
+          ? `<img class="chat-image" src="${escapeAttribute(attachment.url)}" data-fallback-src="${escapeAttribute(attachment.fallbackUrl || "")}" onerror="if(this.dataset.fallbackSrc && this.src.indexOf(this.dataset.fallbackSrc)===-1){this.src=this.dataset.fallbackSrc;}else{this.style.display='none';}" alt="${escapeAttribute(attachment.originalName || "imagen")}" />`
           : "";
         const textHtml = String(msg.text || "").trim()
           ? `<div>${escapeHtml(msg.text)}</div>`
