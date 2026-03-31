@@ -39,5 +39,5 @@
   <string name="remove_image">Quitar imagen</string>
   <string name="image_type_not_supported">Solo se permiten imágenes JPG, PNG o WEBP.</string>
   <string name="image_read_failed">No se pudo leer la imagen.</string>
+  <string name="chat_image_viewer_title">Imagen</string>
 </resources>
-

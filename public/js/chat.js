@@ -16,6 +16,9 @@
   const attachmentImage = document.getElementById("chatAttachmentImage");
   const attachmentName = document.getElementById("chatAttachmentName");
   const attachmentClear = document.getElementById("chatAttachmentClear");
+  const imageModal = document.getElementById("chatImageModal");
+  const imageModalImage = document.getElementById("chatImageModalImage");
+  const imageModalClose = document.getElementById("chatImageModalClose");
   let refreshTimer = null;
   let lastRenderedFingerprint = "";
   let pendingAttachment = null;
@@ -129,6 +132,18 @@
     if (attachmentPreview) attachmentPreview.classList.add("hidden");
     if (attachmentImage) attachmentImage.removeAttribute("src");
     if (attachmentName) attachmentName.textContent = "";
+  }
+
+  function openImageModal(src) {
+    if (!imageModal || !imageModalImage || !src) return;
+    imageModalImage.src = src;
+    imageModal.classList.remove("hidden");
+  }
+
+  function closeImageModal() {
+    if (!imageModal || !imageModalImage) return;
+    imageModal.classList.add("hidden");
+    imageModalImage.removeAttribute("src");
   }
 
   function readFileAsDataUrl(file) {
@@ -341,7 +356,31 @@
 
   if (chatWindow) {
     chatWindow.addEventListener("paste", handleClipboardPaste);
+    chatWindow.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLImageElement)) return;
+      if (!target.classList.contains("chat-image")) return;
+      openImageModal(target.currentSrc || target.src);
+    });
   }
+
+  if (imageModalClose) {
+    imageModalClose.addEventListener("click", closeImageModal);
+  }
+
+  if (imageModal) {
+    imageModal.addEventListener("click", (event) => {
+      if (event.target === imageModal) {
+        closeImageModal();
+      }
+    });
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeImageModal();
+    }
+  });
 
   if (contactSelect.value) {
     loadConversation(contactSelect.value);

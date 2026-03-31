@@ -10,6 +10,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.agenteia.internalchat.R
+import com.agenteia.internalchat.data.MessageAttachmentDto
 import com.agenteia.internalchat.data.MessageDto
 import com.agenteia.internalchat.network.ApiClient
 import java.time.Instant
@@ -18,7 +19,8 @@ import java.time.format.DateTimeFormatter
 
 class MessagesAdapter(
     private val currentUserId: String,
-    private val onLongTap: (MessageDto) -> Unit
+    private val onLongTap: (MessageDto) -> Unit,
+    private val onImageTap: (MessageAttachmentDto) -> Unit
 ) : RecyclerView.Adapter<MessagesAdapter.ViewHolder>() {
     private val items = mutableListOf<MessageDto>()
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -33,7 +35,7 @@ class MessagesAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_message, parent, false)
-        return ViewHolder(view, onLongTap, timeFormatter)
+        return ViewHolder(view, onLongTap, onImageTap, timeFormatter)
     }
 
     override fun getItemCount(): Int = items.size
@@ -45,6 +47,7 @@ class MessagesAdapter(
     class ViewHolder(
         itemView: View,
         private val onLongTap: (MessageDto) -> Unit,
+        private val onImageTap: (MessageAttachmentDto) -> Unit,
         private val timeFormatter: DateTimeFormatter
     ) : RecyclerView.ViewHolder(itemView) {
         private val row: LinearLayout = itemView.findViewById(R.id.messageRow)
@@ -67,15 +70,33 @@ class MessagesAdapter(
                 else -> itemView.context.getString(R.string.message_received)
             }
 
-            val attachment = item.attachment
-            if (attachment != null && attachment.type == "image" && attachment.url.isNotBlank()) {
+            val attachment = normalizeImageAttachment(item)
+            if (attachment != null && attachment.url.isNotBlank()) {
                 messageImage.visibility = View.VISIBLE
-                messageImage.load(ApiClient.resolveUrl(itemView.context, attachment.url)) {
+                val resolvedUrl = ApiClient.resolveUrl(
+                    itemView.context,
+                    if (attachment.url.isNotBlank()) attachment.url else attachment.fallbackUrl
+                )
+                messageImage.load(resolvedUrl) {
                     crossfade(true)
+                    listener(
+                        onError = { _, _ ->
+                            val fallback = attachment.fallbackUrl
+                            if (fallback.isNotBlank() && fallback != attachment.url) {
+                                messageImage.load(ApiClient.resolveUrl(itemView.context, fallback)) {
+                                    crossfade(true)
+                                }
+                            }
+                        }
+                    )
+                }
+                messageImage.setOnClickListener {
+                    onImageTap(attachment)
                 }
             } else {
                 messageImage.visibility = View.GONE
                 messageImage.setImageDrawable(null)
+                messageImage.setOnClickListener(null)
             }
 
             if (item.text.isBlank()) {
@@ -93,6 +114,28 @@ class MessagesAdapter(
                 true
             }
         }
+
+        private fun normalizeImageAttachment(item: MessageDto): MessageAttachmentDto? {
+            val nested = item.attachment
+            if (nested != null && nested.type == "image" && (nested.url.isNotBlank() || nested.fallbackUrl.isNotBlank())) {
+                return nested
+            }
+            if (
+                item.attachmentType == "image"
+                && item.fileId.isNotBlank()
+                && item.attachmentRelativePath.isNotBlank()
+            ) {
+                return MessageAttachmentDto(
+                    type = "image",
+                    fileId = item.fileId,
+                    mimeType = item.attachmentMimeType,
+                    originalName = item.attachmentOriginalName,
+                    relativePath = item.attachmentRelativePath,
+                    url = "/${item.attachmentRelativePath.trimStart('/')}",
+                    fallbackUrl = "/files/content/${item.fileId}",
+                )
+            }
+            return null
+        }
     }
 }
-

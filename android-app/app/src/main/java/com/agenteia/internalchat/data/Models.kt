@@ -48,7 +48,8 @@ data class MessageAttachmentDto(
     val mimeType: String = "",
     val originalName: String = "",
     val relativePath: String = "",
-    val url: String = ""
+    val url: String = "",
+    val fallbackUrl: String = ""
 )
 
 data class MessageDto(
@@ -61,7 +62,12 @@ data class MessageDto(
     val timestamp: String,
     val conversationType: String = "direct",
     val readAt: String? = null,
-    val attachment: MessageAttachmentDto? = null
+    val attachment: MessageAttachmentDto? = null,
+    val attachmentType: String = "",
+    val fileId: String = "",
+    val attachmentOriginalName: String = "",
+    val attachmentMimeType: String = "",
+    val attachmentRelativePath: String = "",
 )
 
 data class MessagesResponse(
@@ -112,4 +118,3 @@ data class RealtimeMessageEvent(
     val readAt: String? = null,
     val attachment: MessageAttachmentDto? = null
 )
-

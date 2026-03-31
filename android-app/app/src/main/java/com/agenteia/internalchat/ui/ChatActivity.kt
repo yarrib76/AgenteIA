@@ -1,5 +1,6 @@
 package com.agenteia.internalchat.ui
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
@@ -16,6 +17,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.agenteia.internalchat.R
+import com.agenteia.internalchat.data.MessageAttachmentDto
 import com.agenteia.internalchat.data.MessageDto
 import com.agenteia.internalchat.data.SendMessageRequest
 import com.agenteia.internalchat.data.SessionStore
@@ -87,9 +89,11 @@ class ChatActivity : AppCompatActivity() {
         titleText.text = conversationName
 
         layoutManager = LinearLayoutManager(this)
-        adapter = MessagesAdapter(sessionStore.getUserId()) { message ->
-            confirmDeleteMessage(message)
-        }
+        adapter = MessagesAdapter(
+            sessionStore.getUserId(),
+            onLongTap = { message -> confirmDeleteMessage(message) },
+            onImageTap = { attachment -> openImageViewer(attachment) }
+        )
         recyclerView.layoutManager = layoutManager
         recyclerView.adapter = adapter
 
@@ -140,6 +144,15 @@ class ChatActivity : AppCompatActivity() {
         val errorText = runCatching { response.errorBody()?.string() }.getOrNull().orEmpty().trim()
         if (errorText.isNotBlank()) return errorText
         return fallback
+    }
+
+    private fun openImageViewer(attachment: MessageAttachmentDto) {
+        val intent = Intent(this, ImageViewerActivity::class.java).apply {
+            putExtra(ImageViewerActivity.EXTRA_IMAGE_URL, attachment.url)
+            putExtra(ImageViewerActivity.EXTRA_FALLBACK_URL, attachment.fallbackUrl)
+            putExtra(ImageViewerActivity.EXTRA_IMAGE_TITLE, attachment.originalName)
+        }
+        startActivity(intent)
     }
 
     private fun prepareImageAttachment(uri: Uri) {
@@ -280,4 +293,3 @@ class ChatActivity : AppCompatActivity() {
         }
     }
 }
-
