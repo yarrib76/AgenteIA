@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "287739996208",
+    "project_id": "samiraagenteia",
+    "storage_bucket": "samiraagenteia.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:287739996208:android:43a4ba8216dee9902425f5",
+        "android_client_info": {
+          "package_name": "com.agenteia.internalchat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6ACZvxHdYAwCz8fXKCpt1MYyMmB7Hcvo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

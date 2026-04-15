@@ -8,6 +8,8 @@ android {
   namespace = "com.agenteia.internalchat"
   compileSdk = 35
 
+  flavorDimensions += "tenant"
+
   defaultConfig {
     applicationId = "com.agenteia.internalchat"
     minSdk = 26
@@ -20,6 +22,15 @@ android {
       .orElse("http://10.0.2.2:3000/")
       .get()
     buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
+  }
+
+  productFlavors {
+    create("samira") {
+      dimension = "tenant"
+    }
+    create("viamore") {
+      dimension = "tenant"
+    }
   }
 
   buildTypes {
