@@ -217,7 +217,7 @@ async function getConversation(req, res) {
       contact: { id: `user:${user.id}`, name: user.name || user.email, type: "user" },
       messages: messages.map((msg) => ({
         ...msg,
-        direction: msg.senderUserId === req.currentUser.id ? "out" : "in",
+        direction: msg.senderUserId === actor.userId ? "out" : "in",
         conversationType: msg.conversationType || "direct",
         senderName: msg.senderName || "",
       })),
