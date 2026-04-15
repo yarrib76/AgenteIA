@@ -1,35 +1,11 @@
 const internalChatService = require("./internal-chat.service");
 const internalChatGroupsService = require("./internal-chat-groups.service");
+const internalChatRealtime = require("./internal-chat.realtime");
 const messagingGateway = require("../messaging/messaging.gateway");
 const usersService = require("../auth/users.service");
 const internalChatPushService = require("./internal-chat.push.service");
 
 function buildInternalChatProvider() {
-  let io = null;
-
-  function emitMessage(message) {
-    if (!io) return;
-    const payload = {
-      messageId: message.id,
-      conversationId: message.conversationId,
-      conversationType: message.conversationType || "direct",
-      groupId: message.groupId || "",
-      senderUserId: message.senderUserId,
-      senderName: message.senderName || "",
-      recipientUserId: message.recipientUserId,
-      text: message.text,
-      attachment: message.attachment || null,
-      timestamp: message.timestamp,
-      readAt: message.readAt || null,
-    };
-    const recipients = Array.isArray(message.participantUserIds) && message.participantUserIds.length > 0
-      ? message.participantUserIds
-      : [message.senderUserId, message.recipientUserId].filter(Boolean);
-    Array.from(new Set(recipients)).forEach((userId) => {
-      io.to(`internal-user:${userId}`).emit("internal-chat-message", payload);
-    });
-  }
-
   messagingGateway.setProvider("internal_chat", {
     sendMessage: async (target, text, options = {}) => {
       const senderUserId = String(options.senderUserId || internalChatService.SYSTEM_USER_ID).trim();
@@ -62,7 +38,7 @@ function buildInternalChatProvider() {
           : (await usersService.getUserById(senderUserId))?.email || internalChatService.SYSTEM_USER_LABEL;
       }
 
-      emitMessage(message);
+      internalChatRealtime.emitMessage(message);
       for (const userId of pushTargets) {
         await internalChatPushService.sendPushToUser(userId, {
           title: senderUserId === internalChatService.SYSTEM_USER_ID ? "Robot IA" : "Nuevo mensaje interno",
@@ -112,9 +88,9 @@ function buildInternalChatProvider() {
     init: async () => true,
     stop: async () => true,
     attachIo: (nextIo) => {
-      io = nextIo;
-      if (!io) return;
-      io.on("connection", (socket) => {
+      internalChatRealtime.attachIo(nextIo);
+      if (!nextIo) return;
+      nextIo.on("connection", (socket) => {
         socket.on("internal-chat-auth", (payload) => {
           const userId = String(payload && payload.userId || "").trim();
           if (!userId) return;

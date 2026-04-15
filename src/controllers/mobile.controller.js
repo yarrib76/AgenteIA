@@ -1,6 +1,7 @@
 const usersService = require("../modules/auth/users.service");
 const mobileAuthService = require("../modules/mobile/mobile-auth.service");
 const mobileDeviceTokensService = require("../modules/mobile/mobile-device-tokens.service");
+const internalChatRealtime = require("../modules/internal-chat/internal-chat.realtime");
 const internalChatService = require("../modules/internal-chat/internal-chat.service");
 const internalChatPushService = require("../modules/internal-chat/internal-chat.push.service");
 const { routeTaskReplyIfNeeded } = require("../modules/messaging/reply-routing.service");
@@ -74,7 +75,8 @@ async function getConversationMessages(req, res) {
     return res.status(404).json({ ok: false, message: "Conversacion no encontrada." });
   }
   const messages = await internalChatService.listConversationMessages(conversation.id, req.mobileUser.id);
-  await internalChatService.markConversationRead(conversation.id, req.mobileUser.id);
+  const readResult = await internalChatService.markConversationReadDetailed(conversation.id, req.mobileUser.id);
+  internalChatRealtime.emitReadReceipt(readResult);
   return res.json({
     ok: true,
     conversation,
@@ -158,8 +160,9 @@ async function markConversationRead(req, res) {
   if (!conversation) {
     return res.status(404).json({ ok: false, message: "Conversacion no encontrada." });
   }
-  const count = await internalChatService.markConversationRead(conversation.id, req.mobileUser.id);
-  return res.json({ ok: true, updatedCount: count });
+  const result = await internalChatService.markConversationReadDetailed(conversation.id, req.mobileUser.id);
+  internalChatRealtime.emitReadReceipt(result);
+  return res.json({ ok: true, updatedCount: result.count });
 }
 
 async function deleteConversation(req, res) {

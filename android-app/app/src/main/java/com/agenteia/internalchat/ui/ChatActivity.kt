@@ -19,6 +19,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.agenteia.internalchat.R
 import com.agenteia.internalchat.data.MessageAttachmentDto
 import com.agenteia.internalchat.data.MessageDto
+import com.agenteia.internalchat.data.RealtimeReadEvent
 import com.agenteia.internalchat.data.SendMessageRequest
 import com.agenteia.internalchat.data.SessionStore
 import com.agenteia.internalchat.data.UploadImageAttachmentRequest
@@ -55,6 +56,7 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var conversationId: String
     private lateinit var socketClient: InternalChatSocketClient
     private lateinit var layoutManager: LinearLayoutManager
+    private var currentMessages: List<MessageDto> = emptyList()
     private var pendingImage: PendingImageAttachment? = null
 
     private val imagePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -122,13 +124,24 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun connectSocket() {
-        socketClient.connect(sessionStore.getUserId()) { event ->
-            if (event.conversationId != conversationId) return@connect
-            runOnUiThread {
-                val shouldScroll = isNearBottom() || event.senderUserId == sessionStore.getUserId()
-                loadMessages(scrollToBottom = shouldScroll)
+        socketClient.connect(
+            userId = sessionStore.getUserId(),
+            onMessage = { event ->
+                if (event.conversationId == conversationId) {
+                    runOnUiThread {
+                        val shouldScroll = isNearBottom() || event.senderUserId == sessionStore.getUserId()
+                        loadMessages(scrollToBottom = shouldScroll)
+                    }
+                }
+            },
+            onRead = { event ->
+                if (event.conversationId == conversationId) {
+                    runOnUiThread {
+                        applyReadReceipt(event)
+                    }
+                }
             }
-        }
+        )
     }
 
     private fun authorization(): String = "Bearer ${sessionStore.getToken()}"
@@ -220,12 +233,35 @@ class ChatActivity : AppCompatActivity() {
                     statusText.text = body?.message ?: getString(R.string.load_messages_failed)
                     return@withContext
                 }
-                adapter.submit(body.messages)
+                currentMessages = body.messages
+                adapter.submit(currentMessages)
                 if (scrollToBottom && body.messages.isNotEmpty()) {
-                    recyclerView.scrollToPosition(body.messages.size - 1)
+                    recyclerView.scrollToPosition(adapter.itemCount - 1)
                 }
                 statusText.text = ""
             }
+        }
+    }
+
+    private fun applyReadReceipt(event: RealtimeReadEvent) {
+        if (event.messageIds.isEmpty() || event.readAt.isNullOrBlank()) return
+        val messageIds = event.messageIds.toSet()
+        var changed = false
+        currentMessages = currentMessages.map { message ->
+            if (
+                message.id in messageIds
+                && message.conversationType == "direct"
+                && message.senderUserId == sessionStore.getUserId()
+                && message.readAt != event.readAt
+            ) {
+                changed = true
+                message.copy(readAt = event.readAt)
+            } else {
+                message
+            }
+        }
+        if (changed) {
+            adapter.submit(currentMessages)
         }
     }
 

@@ -2,6 +2,7 @@ const contactsService = require("../modules/agenda/contacts.service");
 const messagesService = require("../modules/chat/messages.service");
 const messagingGateway = require("../modules/messaging/messaging.gateway");
 const usersService = require("../modules/auth/users.service");
+const internalChatRealtime = require("../modules/internal-chat/internal-chat.realtime");
 const internalChatService = require("../modules/internal-chat/internal-chat.service");
 const internalChatGroupsService = require("../modules/internal-chat/internal-chat-groups.service");
 const { SYSTEM_USER_ID } = require("../modules/internal-chat/internal-chat.service");
@@ -182,7 +183,8 @@ async function getConversation(req, res) {
       const messages = conversation
         ? await internalChatService.listConversationMessages(conversation.id, actor.userId)
         : [];
-      await internalChatService.markConversationRead(conversationId, actor.userId);
+      const readResult = await internalChatService.markConversationReadDetailed(conversationId, actor.userId);
+      internalChatRealtime.emitReadReceipt(readResult);
       return res.json({
         ok: true,
         contact: { id: `group:${group.id}`, name: group.name, type: "group" },
@@ -205,10 +207,11 @@ async function getConversation(req, res) {
     const messages = conversation
       ? await internalChatService.listConversationMessages(conversation.id, actor.userId)
       : [];
-    await internalChatService.markConversationRead(
+    const readResult = await internalChatService.markConversationReadDetailed(
       conversation ? conversation.id : internalChatService.buildConversationId(actor.userId, user.id),
       actor.userId
     );
+    internalChatRealtime.emitReadReceipt(readResult);
     return res.json({
       ok: true,
       contact: { id: `user:${user.id}`, name: user.name || user.email, type: "user" },

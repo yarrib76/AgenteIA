@@ -5,7 +5,7 @@
   android:layout_height="match_parent"
   android:background="#E6121724">
 
-  <ImageView
+  <com.agenteia.internalchat.ui.widget.ZoomableImageView
     android:id="@+id/viewerImage"
     android:layout_width="match_parent"
     android:layout_height="match_parent"

@@ -96,11 +96,19 @@ class ConversationsActivity : AppCompatActivity() {
     }
 
     private fun connectSocket() {
-        socketClient.connect(sessionStore.getUserId()) {
-            runOnUiThread {
-                loadConversations(silent = true)
+        socketClient.connect(
+            userId = sessionStore.getUserId(),
+            onMessage = {
+                runOnUiThread {
+                    loadConversations(silent = true)
+                }
+            },
+            onRead = {
+                runOnUiThread {
+                    loadConversations(silent = true)
+                }
             }
-        }
+        )
     }
 
     private fun renderBackendInfo() {

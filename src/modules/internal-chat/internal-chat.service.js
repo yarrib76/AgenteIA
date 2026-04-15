@@ -435,18 +435,25 @@ async function listConversationsForUser(userId) {
 }
 
 async function markConversationRead(conversationId, userId) {
+  const result = await markConversationReadDetailed(conversationId, userId);
+  return result.count;
+}
+
+async function markConversationReadDetailed(conversationId, userId) {
   const targetConversation = normalizeText(conversationId);
   const targetUserId = normalizeText(userId);
   const [messages, conversations] = await Promise.all([listMessages(), listConversations()]);
   const conversation = conversations.find((row) => row.id === targetConversation) || null;
   const now = new Date().toISOString();
   let changed = 0;
+  const changedMessageIds = [];
   const updated = messages.map((row) => {
     if (row.conversationId !== targetConversation) return row;
     if (!isMessageVisibleForUser(row, conversation, targetUserId)) return row;
     if (!isMessageUnreadForUser(row, targetUserId)) return row;
     const nextReadBy = normalizeIdList([...(row.readByUserIds || []), targetUserId]);
     changed += 1;
+    changedMessageIds.push(row.id);
     return {
       ...row,
       readByUserIds: nextReadBy,
@@ -456,7 +463,15 @@ async function markConversationRead(conversationId, userId) {
   if (changed > 0) {
     await saveMessages(updated);
   }
-  return changed;
+  return {
+    count: changed,
+    conversationId: targetConversation,
+    conversationType: conversation ? conversation.type : "",
+    readerUserId: targetUserId,
+    participantUserIds: conversation ? normalizeIdList(conversation.participantUserIds) : [],
+    messageIds: changedMessageIds,
+    readAt: changed > 0 && conversation && conversation.type === "direct" ? now : null,
+  };
 }
 
 async function clearConversationForUser(conversationId, userId) {
@@ -572,6 +587,7 @@ module.exports = {
   listConversationMessages,
   listConversationsForUser,
   markConversationRead,
+  markConversationReadDetailed,
   clearConversation,
   clearConversationForUser,
   deleteMessageForUser,

@@ -118,3 +118,10 @@ data class RealtimeMessageEvent(
     val readAt: String? = null,
     val attachment: MessageAttachmentDto? = null
 )
+
+data class RealtimeReadEvent(
+    val conversationId: String,
+    val messageIds: List<String> = emptyList(),
+    val readAt: String? = null,
+    val readerUserId: String = ""
+)

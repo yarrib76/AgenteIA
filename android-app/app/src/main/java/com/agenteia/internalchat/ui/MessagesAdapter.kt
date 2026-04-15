@@ -14,37 +14,93 @@ import com.agenteia.internalchat.data.MessageAttachmentDto
 import com.agenteia.internalchat.data.MessageDto
 import com.agenteia.internalchat.network.ApiClient
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class MessagesAdapter(
     private val currentUserId: String,
     private val onLongTap: (MessageDto) -> Unit,
     private val onImageTap: (MessageAttachmentDto) -> Unit
-) : RecyclerView.Adapter<MessagesAdapter.ViewHolder>() {
-    private val items = mutableListOf<MessageDto>()
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+    private sealed interface RowItem {
+        data class Separator(val label: String) : RowItem
+        data class Message(val value: MessageDto) : RowItem
+    }
+
+    private val items = mutableListOf<RowItem>()
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
         .withZone(ZoneId.systemDefault())
+    private val dateFormatter = DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale("es", "AR"))
+    private val zoneId = ZoneId.systemDefault()
 
     fun submit(list: List<MessageDto>) {
         items.clear()
-        items.addAll(list)
+        items.addAll(buildRows(list))
         notifyDataSetChanged()
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_message, parent, false)
-        return ViewHolder(view, onLongTap, onImageTap, timeFormatter)
+    override fun getItemViewType(position: Int): Int {
+        return when (items[position]) {
+            is RowItem.Separator -> 0
+            is RowItem.Message -> 1
+        }
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        val inflater = LayoutInflater.from(parent.context)
+        return if (viewType == 0) {
+            val view = inflater.inflate(R.layout.item_message_date_separator, parent, false)
+            SeparatorViewHolder(view)
+        } else {
+            val view = inflater.inflate(R.layout.item_message, parent, false)
+            MessageViewHolder(view, onLongTap, onImageTap, timeFormatter)
+        }
     }
 
     override fun getItemCount(): Int = items.size
 
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(items[position], currentUserId)
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        when (val item = items[position]) {
+            is RowItem.Separator -> (holder as SeparatorViewHolder).bind(item.label)
+            is RowItem.Message -> (holder as MessageViewHolder).bind(item.value, currentUserId)
+        }
     }
 
-    class ViewHolder(
+    private fun buildRows(messages: List<MessageDto>): List<RowItem> {
+        val rows = mutableListOf<RowItem>()
+        var currentDate: LocalDate? = null
+        val today = LocalDate.now(zoneId)
+        messages.forEach { message ->
+            val messageDate = runCatching {
+                Instant.parse(message.timestamp).atZone(zoneId).toLocalDate()
+            }.getOrNull()
+            if (messageDate != null && messageDate != currentDate) {
+                val label = if (messageDate == today) {
+                    "Hoy"
+                } else {
+                    dateFormatter.format(messageDate)
+                }
+                rows += RowItem.Separator(label)
+                currentDate = messageDate
+            }
+            rows += RowItem.Message(message)
+        }
+        return rows
+    }
+
+    private class SeparatorViewHolder(
+        itemView: View,
+    ) : RecyclerView.ViewHolder(itemView) {
+        private val label: TextView = itemView.findViewById(R.id.messageDateLabel)
+
+        fun bind(value: String) {
+            label.text = value
+        }
+    }
+
+    class MessageViewHolder(
         itemView: View,
         private val onLongTap: (MessageDto) -> Unit,
         private val onImageTap: (MessageAttachmentDto) -> Unit,
@@ -56,6 +112,7 @@ class MessagesAdapter(
         private val messageText: TextView = itemView.findViewById(R.id.messageText)
         private val messageImage: ImageView = itemView.findViewById(R.id.messageImage)
         private val messageMeta: TextView = itemView.findViewById(R.id.messageMeta)
+        private val messageStatus: TextView = itemView.findViewById(R.id.messageStatus)
 
         fun bind(item: MessageDto, currentUserId: String) {
             val isOutgoing = item.senderUserId == currentUserId
@@ -108,7 +165,21 @@ class MessagesAdapter(
             }
 
             val time = runCatching { timeFormatter.format(Instant.parse(item.timestamp)) }.getOrDefault("")
-            messageMeta.text = if (isOutgoing) "$time  •  ${itemView.context.getString(R.string.you_label)}" else time
+            messageMeta.text = time
+            val showStatus = isOutgoing && item.conversationType == "direct"
+            if (showStatus) {
+                messageStatus.visibility = View.VISIBLE
+                messageStatus.text = itemView.context.getString(R.string.message_read_check)
+                messageStatus.setTextColor(
+                    itemView.context.getColor(
+                        if (item.readAt.isNullOrBlank()) R.color.message_status_pending
+                        else R.color.message_status_read
+                    )
+                )
+            } else {
+                messageStatus.visibility = View.GONE
+                messageStatus.text = ""
+            }
             itemView.setOnLongClickListener {
                 onLongTap(item)
                 true

@@ -2,6 +2,7 @@ package com.agenteia.internalchat.network
 
 import android.content.Context
 import com.agenteia.internalchat.data.MessageAttachmentDto
+import com.agenteia.internalchat.data.RealtimeReadEvent
 import com.agenteia.internalchat.data.RealtimeMessageEvent
 import com.agenteia.internalchat.data.ServerSettingsStore
 import io.socket.client.IO
@@ -50,7 +51,11 @@ object ApiClient {
 class InternalChatSocketClient(private val context: Context) {
     private var socket: Socket? = null
 
-    fun connect(userId: String, onMessage: (RealtimeMessageEvent) -> Unit) {
+    fun connect(
+        userId: String,
+        onMessage: (RealtimeMessageEvent) -> Unit,
+        onRead: (RealtimeReadEvent) -> Unit
+    ) {
         disconnect()
         val baseUrl = ServerSettingsStore(context.applicationContext).getBackendBaseUrl().removeSuffix("/")
         val options = IO.Options.builder()
@@ -73,6 +78,7 @@ class InternalChatSocketClient(private val context: Context) {
                     originalName = it.optString("originalName"),
                     relativePath = it.optString("relativePath"),
                     url = it.optString("url"),
+                    fallbackUrl = it.optString("fallbackUrl"),
                 )
             }
             val event = RealtimeMessageEvent(
@@ -88,6 +94,25 @@ class InternalChatSocketClient(private val context: Context) {
                 attachment = attachment,
             )
             onMessage(event)
+        }
+        socket?.on("internal-chat-read") { args ->
+            val raw = args.firstOrNull() as? JSONObject ?: return@on
+            val messageIds = buildList {
+                val array = raw.optJSONArray("messageIds")
+                if (array != null) {
+                    for (index in 0 until array.length()) {
+                        val value = array.optString(index)
+                        if (value.isNotBlank()) add(value)
+                    }
+                }
+            }
+            val event = RealtimeReadEvent(
+                conversationId = raw.optString("conversationId"),
+                messageIds = messageIds,
+                readAt = raw.optString("readAt").ifBlank { null },
+                readerUserId = raw.optString("readerUserId"),
+            )
+            onRead(event)
         }
         socket?.connect()
     }

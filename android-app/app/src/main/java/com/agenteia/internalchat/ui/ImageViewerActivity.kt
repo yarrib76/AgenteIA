@@ -1,12 +1,12 @@
 package com.agenteia.internalchat.ui
 
 import android.os.Bundle
-import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import coil.load
 import com.agenteia.internalchat.R
 import com.agenteia.internalchat.network.ApiClient
+import com.agenteia.internalchat.ui.widget.ZoomableImageView
 
 class ImageViewerActivity : AppCompatActivity() {
     companion object {
@@ -19,7 +19,7 @@ class ImageViewerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_image_viewer)
 
-        val imageView = findViewById<ImageView>(R.id.viewerImage)
+        val imageView = findViewById<ZoomableImageView>(R.id.viewerImage)
         val titleView = findViewById<TextView>(R.id.viewerTitle)
         val primaryUrl = intent.getStringExtra(EXTRA_IMAGE_URL).orEmpty()
         val fallbackUrl = intent.getStringExtra(EXTRA_FALLBACK_URL).orEmpty()
