@@ -23,6 +23,18 @@
   let lastRenderedFingerprint = "";
   let pendingAttachment = null;
   const chatTimeZone = "America/Argentina/Buenos_Aires";
+  const chatDateFormatter = new Intl.DateTimeFormat("es-AR", {
+    timeZone: chatTimeZone,
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const chatClockFormatter = new Intl.DateTimeFormat("es-AR", {
+    timeZone: chatTimeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 
   if (!contactSelect || !chatForm) return;
 
@@ -56,7 +68,7 @@
     const fingerprint = JSON.stringify(
       (messages || []).map((m) => {
         const attachment = normalizeImageAttachment(m);
-        return [m.id, m.timestamp, m.text, m.direction, m.senderName, m.conversationType, attachment && attachment.url];
+        return [m.id, m.timestamp, m.text, m.direction, m.senderName, m.conversationType, m.readAt, attachment && attachment.url];
       })
     );
     if (fingerprint === lastRenderedFingerprint) {
@@ -70,9 +82,10 @@
     }
 
     chatWindow.innerHTML = messages
-      .map((msg) => {
+      .map((msg, index) => {
         const cls = msg.direction === "out" ? "out" : "in";
-        const timestamp = formatTimestamp(msg.timestamp);
+        const timestamp = formatMessageTime(msg.timestamp);
+        const separatorHtml = buildDateSeparator(messages[index - 1], msg);
         const showSender = activeChannelInput && activeChannelInput.value === "internal_chat"
           && msg.direction !== "out"
           && msg.conversationType === "group"
@@ -87,9 +100,9 @@
         const textHtml = String(msg.text || "").trim()
           ? `<div>${escapeHtml(msg.text)}</div>`
           : "";
-        return `<div class="message ${cls}">
+        return `${separatorHtml}<div class="message ${cls}">
           <div class="bubble">${senderHtml}${imageHtml}${textHtml}</div>
-          <span class="meta">${escapeHtml(timestamp)}</span>
+          <span class="meta">${escapeHtml(timestamp)}${buildReadReceipt(msg)}</span>
         </div>`;
       })
       .join("");
@@ -110,6 +123,52 @@
       second: "2-digit",
       hour12: false,
     }).format(date);
+  }
+
+  function formatMessageTime(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return chatClockFormatter.format(date);
+  }
+
+  function buildDateSeparator(previous, current) {
+    const currentKey = getDateKey(current && current.timestamp);
+    if (!currentKey) return "";
+    const previousKey = getDateKey(previous && previous.timestamp);
+    if (currentKey === previousKey) return "";
+    return `<div class="message-date-separator">${escapeHtml(formatDateLabel(current.timestamp))}</div>`;
+  }
+
+  function getDateKey(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: chatTimeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  }
+
+  function formatDateLabel(value) {
+    if (!value) return "-";
+    if (getDateKey(value) === getDateKey(new Date().toISOString())) {
+      return "Hoy";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return chatDateFormatter.format(date);
+  }
+
+  function buildReadReceipt(msg) {
+    const shouldShow = activeChannelInput
+      && activeChannelInput.value === "internal_chat"
+      && msg.direction === "out"
+      && msg.conversationType === "direct";
+    if (!shouldShow) return "";
+    return ` <span class="message-read-receipt ${msg.readAt ? "read" : "pending"}">✓</span>`;
   }
 
   function escapeHtml(value) {

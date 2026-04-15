@@ -263,6 +263,17 @@ body {
   background: #f8fafc;
 }
 
+.message-date-separator {
+  width: fit-content;
+  margin: 10px auto 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #d9e9e0;
+  color: #385049;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .message {
   display: grid;
   margin-bottom: 10px;
@@ -296,6 +307,18 @@ body {
   color: var(--muted);
   font-size: 0.75rem;
   margin-top: 3px;
+}
+
+.message-read-receipt {
+  font-weight: 700;
+}
+
+.message-read-receipt.pending {
+  color: #9ca7a1;
+}
+
+.message-read-receipt.read {
+  color: #1aa35c;
 }
 
 .chat-form {
