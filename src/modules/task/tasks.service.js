@@ -631,6 +631,7 @@ async function listTasks() {
 }
 
 async function createTask({
+  name,
   agentId,
   taskPromptTemplate,
   taskInput,
@@ -645,6 +646,7 @@ async function createTask({
   scheduleTimezone,
 }) {
   const activeChannel = await messagingGateway.getChannel();
+  const nextName = normalizeText(name);
   const nextAgentId = normalizeText(agentId);
   const nextTaskPromptTemplate = normalizeText(taskPromptTemplate);
   const nextTaskInput = normalizeText(taskInput);
@@ -730,6 +732,7 @@ async function createTask({
   );
   const task = {
     id: randomUUID(),
+    name: nextName || "",
     agentId: nextAgentId,
     taskPromptTemplate: nextTaskPromptTemplate,
     taskInput: nextTaskInput,
@@ -769,6 +772,7 @@ async function getTaskById(taskId) {
 async function updateTask(
   taskId,
   {
+    name,
     agentId,
     taskPromptTemplate,
     taskInput,
@@ -784,6 +788,7 @@ async function updateTask(
   }
 ) {
   const activeChannel = await messagingGateway.getChannel();
+  const nextName = normalizeText(name);
   const nextAgentId = normalizeText(agentId);
   const nextTaskPromptTemplate = normalizeText(taskPromptTemplate);
   const nextTaskInput = normalizeText(taskInput);
@@ -871,6 +876,7 @@ async function updateTask(
 
   tasks[index] = {
     ...tasks[index],
+    name: nextName || "",
     agentId: nextAgentId,
     taskPromptTemplate: nextTaskPromptTemplate,
     taskInput: nextTaskInput,

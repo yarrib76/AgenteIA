@@ -11,6 +11,17 @@
   <form id="taskForm" class="form-grid">
     <input type="hidden" id="taskId" name="taskId" />
     <label class="field">
+      <span>Nombre</span>
+      <input
+        id="taskName"
+        name="name"
+        type="text"
+        maxlength="120"
+        placeholder="Ej: Seguimiento pedidos pendientes de pago"
+      />
+    </label>
+
+    <label class="field">
       <span>Agente</span>
       <select id="taskAgentId" name="agentId" required>
         <option value="">Seleccionar...</option>
@@ -209,6 +220,7 @@
     <thead>
       <tr>
         <th data-col="fecha">Fecha</th>
+        <th data-col="nombre">Nombre</th>
         <th data-col="agente">Agente</th>
         <th data-col="estado">Estado</th>
         <th data-col="programacion">Programacion</th>
@@ -227,6 +239,7 @@
       <% const agent = agents.find(function(a) { return a.id === task.agentId; }); %>
       <tr>
         <td data-col="fecha"><%= task.createdAt %></td>
+        <td data-col="nombre"><%= task.name || "Sin nombre" %></td>
         <td data-col="agente"><%= agent ? agent.name : "Sin agente" %></td>
         <td data-col="estado">
           <span class="status-pill status-<%= String(task.status || '').toLowerCase() %>">
@@ -277,6 +290,7 @@
               class="secondary-button edit-task-btn"
               type="button"
               data-id="<%= task.id %>"
+              data-name="<%= task.name || '' %>"
               data-agent-id="<%= task.agentId %>"
               data-file-id="<%= task.fileId || '' %>"
               data-integration-id="<%= task.integrationId || '' %>"

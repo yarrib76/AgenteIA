@@ -1,6 +1,7 @@
 (function () {
   const taskForm = document.getElementById("taskForm");
   const taskIdInput = document.getElementById("taskId");
+  const taskNameInput = document.getElementById("taskName");
   const taskAgentIdInput = document.getElementById("taskAgentId");
   const taskPromptTemplateInput = document.getElementById("taskPromptTemplate");
   const taskInputField = document.getElementById("taskInput");
@@ -118,6 +119,7 @@
     if (!tasksTable) return;
     const defaultVisible = new Set([
       "fecha",
+      "nombre",
       "agente",
       "estado",
       "proxima_ejecucion",
@@ -267,6 +269,7 @@
   function setCreateMode() {
     taskForm.reset();
     taskIdInput.value = "";
+    if (taskNameInput) taskNameInput.value = "";
     taskFormTitle.textContent = "Nueva tarea";
     saveTaskBtn.textContent = "Guardar tarea";
     cancelTaskEditBtn.classList.add("hidden");
@@ -298,6 +301,7 @@
 
   function setEditMode(task) {
     taskIdInput.value = task.id;
+    if (taskNameInput) taskNameInput.value = task.name || "";
     taskAgentIdInput.value = task.agentId;
     taskPromptTemplateInput.value = task.taskPromptTemplate;
     taskInputField.value = task.taskInput;
@@ -355,6 +359,7 @@
     const formData = new FormData(taskForm);
     const taskId = formData.get("taskId");
     const payload = {
+      name: formData.get("name"),
       agentId: formData.get("agentId"),
       taskPromptTemplate: formData.get("taskPromptTemplate"),
       taskInput: formData.get("taskInput"),
@@ -488,6 +493,7 @@
     lines.push("# Log de ejecucion de tarea");
     lines.push("");
     lines.push(`- Task ID: \`${task.id}\``);
+    if (task.name) lines.push(`- Nombre: **${task.name}**`);
     lines.push(`- Estado: **${task.status}**`);
     if (task.executionError) lines.push(`- Error: ${task.executionError}`);
     if (task.executionResult) lines.push(`- Resultado: ${task.executionResult}`);
@@ -583,6 +589,7 @@
       const inputSource = row ? row.querySelector(".task-input-source") : null;
       setEditMode({
         id: button.dataset.id,
+        name: button.dataset.name || "",
         agentId: button.dataset.agentId,
         fileId: button.dataset.fileId || "",
         integrationId: button.dataset.integrationId || "",
