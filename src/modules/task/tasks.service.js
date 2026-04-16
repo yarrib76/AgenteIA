@@ -1256,7 +1256,7 @@ function buildOverdueReminderMessage(contactName, rows) {
   return [
     `Hola ${name}, tenés pedidos vencidos pendientes de pago:`,
     lines.join("\n"),
-    "Hoy debés realizar el reclamo de pago correspondiente e informar a Yamil cuando lo hagas.",
+    "Hoy debés realizar el reclamo de pago correspondiente.",
   ]
     .filter(Boolean)
     .join("\n")
