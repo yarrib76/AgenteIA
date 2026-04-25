@@ -115,6 +115,8 @@ function buildTodayContextText(timeZone = "America/Argentina/Buenos_Aires") {
     `FECHA_HOY (obligatoria, no la adivines): ${fechaHoyIso}`,
     `TZ (para interpretacion): ${timeZone}`,
     `Token de fecha de hoy (D-MMM): ${tokenFechaHoy}`,
+    "Si el contexto del Excel incluye columnas *_ISO (por ejemplo Fecha_ISO), usalas como referencia principal para comparar fechas.",
+    "Compara la fecha por equivalencia real de dia/mes/anio, no por coincidencia literal del texto visible.",
   ].join("\n");
 }
 

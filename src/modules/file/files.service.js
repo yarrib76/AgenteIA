@@ -25,6 +25,52 @@ function hasTextValue(value) {
   return String(value == null ? "" : value).trim().length > 0;
 }
 
+function normalizeCompareKey(value) {
+  return String(value == null ? "" : value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeExcelDateToIso(value) {
+  const text = String(value == null ? "" : value).trim();
+  if (!text) return "";
+
+  const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const slashMatch = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+  if (!slashMatch) return "";
+
+  let first = Number.parseInt(slashMatch[1], 10);
+  let second = Number.parseInt(slashMatch[2], 10);
+  let year = Number.parseInt(slashMatch[3], 10);
+  if (!Number.isInteger(first) || !Number.isInteger(second) || !Number.isInteger(year)) return "";
+  if (year < 100) year += 2000;
+
+  let month = first;
+  let day = second;
+
+  if (first > 12 && second <= 12) {
+    day = first;
+    month = second;
+  } else if (second > 12 && first <= 12) {
+    month = first;
+    day = second;
+  } else if (first <= 12 && second <= 12) {
+    // Las fechas que llegan desde xlsx con raw:false suelen quedar en M/D/YY.
+    month = first;
+    day = second;
+  }
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function sanitizeBaseName(value) {
   const cleaned = String(value || "")
     .normalize("NFKD")
@@ -220,6 +266,10 @@ async function getFileRuntimeContext(fileId) {
             const sourceCol = activeColumnIndexes[c];
             const val = String(row[sourceCol] == null ? "" : row[sourceCol]).trim();
             item[headers[c]] = val;
+            if (normalizeCompareKey(headers[c]) === "fecha") {
+              const normalizedDate = normalizeExcelDateToIso(val);
+              if (normalizedDate) item[`${headers[c]}_ISO`] = normalizedDate;
+            }
             if (val) hasValue = true;
           }
           if (hasValue) items.push(item);
